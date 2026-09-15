@@ -17,6 +17,7 @@ npm run lint
 - Review Codex output against: tests pass, typecheck passes, scope respected, no forbidden options/files touched.
 - Bounded review loop: max rounds is configured, not improvised. Escalate to the user when exceeded.
 - Do not commit or push unless the user asks.
+- PR titles, PR bodies, and commit messages are written in **Korean**. Keep code identifiers, paths, commands, and state names as-is.
 - Update `docs/STATUS.md` at every checkpoint.
 
 Details when needed: `docs/PRODUCT.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md`, `docs/ROADMAP.md`.

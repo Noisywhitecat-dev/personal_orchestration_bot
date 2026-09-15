@@ -19,6 +19,7 @@ npm run lint
 - Never build shell command strings. Use `spawn(file, args, { shell: false })`.
 - Never use `--dangerously-bypass-approvals-and-sandbox` or equivalent.
 - Do not commit or push. Leave changes in the working tree.
+- Any PR or commit text you draft must be in **Korean** (code identifiers, paths, commands stay as-is).
 - Do not add dependencies without noting it in your final report.
 - Report: files changed, tests run + results, anything unfinished.
 
