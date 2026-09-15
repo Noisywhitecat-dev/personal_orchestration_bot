@@ -13,6 +13,7 @@ import {
 import { CodexCliAdapter } from '../infrastructure/agents/codex-cli-adapter.js';
 import { FakeClaudeAdapter } from '../infrastructure/agents/fake-claude-adapter.js';
 import { FakeCodexAdapter } from '../infrastructure/agents/fake-codex-adapter.js';
+import { GitReviewContextCollector } from '../infrastructure/git/git-review-context-collector.js';
 import { openDatabase } from '../infrastructure/persistence/database.js';
 import { createSqliteRepositories } from '../infrastructure/persistence/sqlite-repositories.js';
 import { createApp } from './app.js';
@@ -87,6 +88,12 @@ function selectCodexAdapter(): { adapter: AgentAdapter; label: string } {
 }
 
 const claude = selectClaudeAdapter();
+// Bounded working-tree diff for review prompts. Memory-only; never persisted or logged.
+const reviewDiffMaxBytes = positiveIntEnv('REVIEW_DIFF_MAX_BYTES', 64 * 1024) as number;
+const reviewContext = new GitReviewContextCollector({
+  maxBytes: reviewDiffMaxBytes,
+  log: (line) => console.log(line),
+});
 const codex = selectCodexAdapter();
 const db = openDatabase(dbPath);
 const orchestrator = new Orchestrator({
@@ -96,6 +103,7 @@ const orchestrator = new Orchestrator({
   codex: codex.adapter,
   repos: createSqliteRepositories(db),
   maxReviewRounds,
+  reviewContext,
 });
 
 const recovery = orchestrator.recoverInterrupted();
@@ -113,6 +121,7 @@ const server = createApp({ orchestrator, ...(staticDir ? { staticDir } : {}) });
 server.listen(port, () => {
   console.log(`[server] listening on http://localhost:${port} (db: ${dbPath})`);
   console.log(`[server] adapters: claude=${claude.label} codex=${codex.label}`);
+  console.log(`[server] review diff: git, max ${reviewDiffMaxBytes} bytes, memory-only`);
   if (!staticDir)
     console.log('[server] UI not built; use `npm run dev:web` for the Vite dev server.');
 });
