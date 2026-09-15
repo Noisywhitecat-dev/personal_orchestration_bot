@@ -100,6 +100,8 @@ On Windows, an explicitly configured absolute `codex.exe` is validated before an
 
 The pending-error rule uses only the provider's structured `item.type = "error"`; it does not infer success or failure from agent prose. Usage is still emitted exactly once before the terminal event.
 
+Test status is derived from the last recognised test command's completed exit code. Besides direct commands such as `npm test`, the parser recognises the Windows Desktop runtime shape `"<runtime>\\pwsh.exe" -Command 'npm test'` by inspecting only the script after a PowerShell `-Command` boundary. It does not treat arbitrary wrapper arguments containing test text as a test execution. M13 observed this shape in a real Codex implementation; prior to the fix it left `testsPassed=null`, and the external validation guard stopped the pipeline before review.
+
 ### Claude stream-json boundary
 
 `ClaudeCliAdapter` runs `claude --print --output-format stream-json --verbose --permission-mode plan --permission-prompts none --json-schema <schema>` and `claude-jsonl-parser.ts` maps the provider lines to the normalized events above:
@@ -147,6 +149,10 @@ After a successful `implement` / `revise` run the orchestrator asks a `ReviewCon
 - M12 exercised this path against one real, scoped `calculator.js` diff. The prompt contained one
   begin/end marker pair and the expected removed/added lines, while the read-only Claude review left
   the working tree byte-identical.
+- M13 connected the real Orchestrator, SQLite, Claude plan start and Codex implementation. The
+  post-implementation validation guard stopped before context collection/review because the live
+  PowerShell-wrapped test command was not yet recognised. Thus live Claude resume and full-loop
+  review-context delivery remain unverified.
 
 ## Review loop bound
 

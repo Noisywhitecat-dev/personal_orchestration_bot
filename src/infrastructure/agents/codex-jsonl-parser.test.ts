@@ -80,6 +80,28 @@ describe('CodexJsonlParser', () => {
     expect(usage(events).reasoningTokens).toBeNull();
   });
 
+  it('live Windows PowerShell wrapper → recognizes the nested successful test command', () => {
+    const fixtureName = 'live-pwsh-test-command-v0.154.0-alpha.6.2.jsonl';
+    const { events, parser } = parseFixture(fixtureName);
+    const started = events.find((event) => event.type === 'command_started');
+    expect(started?.type === 'command_started' && started.command).toEqual([
+      '"<runtime>\\pwsh.exe"',
+      '-Command',
+      "'npm",
+      "test'",
+    ]);
+    expect(completion(events).testsPassed).toBe(true);
+    expect(parser.state.unknownCount).toBe(0);
+    expect(types(events).indexOf('usage_reported')).toBeLessThan(
+      types(events).indexOf('run_completed'),
+    );
+
+    const text = readFileSync(join(FIXTURES, fixtureName), 'utf8');
+    expect(text).not.toMatch(/[A-Za-z]:\\|\/Users\/|AppData|\.codex|Study/);
+    expect(text).toContain('<runtime>');
+    expect(text).toContain('<redacted test output>');
+  });
+
   it('no usage → exactly one unavailable usage before completion', () => {
     const { events } = parseFixture('no-usage.jsonl');
     const usages = events.filter((e) => e.type === 'usage_reported');

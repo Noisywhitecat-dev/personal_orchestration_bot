@@ -1,24 +1,25 @@
 # STATUS
 
-Last updated: 2026-09-16 (session 10 — M12 live Claude review validation, Codex)
+Last updated: 2026-09-16 (session 11 — M13 partial live end-to-end validation, Codex)
 
 ## Completed milestones
 
-| Milestone                              | Status                                                                                                 |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| M0 Repo contract                       | Done                                                                                                   |
-| M1 Domain + state machine              | Done                                                                                                   |
-| M2 Fake adapters + orchestrator        | Done                                                                                                   |
-| M3 SQLite + HTTP API + SSE             | Done                                                                                                   |
-| M4 Minimal React UI                    | Done (flow verified in browser)                                                                        |
-| M5 `docs/CODEX_NEXT_TASK.md`           | Done                                                                                                   |
-| M6 Real Codex CLI adapter              | Done (live start/resume validated in M11)                                                              |
-| M7 Asynchronous planning               | Done (POST /api/requests returns 202 + draft; planning in background)                                  |
-| M8 Real Claude Code CLI adapter        | Done (live `plan` start in M10 and live `review` start in M12; resume still stub-only)                 |
-| M9 Git diff capture for review input   | Done (temp-git-repo + fake-adapter tested; no model involved)                                          |
-| M10 Live Claude planning validation    | Done (2 approved live calls: 1 auth failure + 1 successful plan on claude 2.1.260)                     |
-| M11 Live Codex start/resume validation | Done (runtime preflight added; successful start + exact-session resume on codex-cli 0.154.0-alpha.6.2) |
-| M12 Live Claude review validation      | Done (one bounded-diff review start returned schema-valid `request_changes` on Claude Code 2.1.260)    |
+| Milestone                               | Status                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| M0 Repo contract                        | Done                                                                                                   |
+| M1 Domain + state machine               | Done                                                                                                   |
+| M2 Fake adapters + orchestrator         | Done                                                                                                   |
+| M3 SQLite + HTTP API + SSE              | Done                                                                                                   |
+| M4 Minimal React UI                     | Done (flow verified in browser)                                                                        |
+| M5 `docs/CODEX_NEXT_TASK.md`            | Done                                                                                                   |
+| M6 Real Codex CLI adapter               | Done (live start/resume validated in M11)                                                              |
+| M7 Asynchronous planning                | Done (POST /api/requests returns 202 + draft; planning in background)                                  |
+| M8 Real Claude Code CLI adapter         | Done (live `plan` start in M10 and live `review` start in M12; resume still stub-only)                 |
+| M9 Git diff capture for review input    | Done (temp-git-repo + fake-adapter tested; no model involved)                                          |
+| M10 Live Claude planning validation     | Done (2 approved live calls: 1 auth failure + 1 successful plan on claude 2.1.260)                     |
+| M11 Live Codex start/resume validation  | Done (runtime preflight added; successful start + exact-session resume on codex-cli 0.154.0-alpha.6.2) |
+| M12 Live Claude review validation       | Done (one bounded-diff review start returned schema-valid `request_changes` on Claude Code 2.1.260)    |
+| M13 Live two-provider orchestrator loop | Partial (real plan and implement ran; review was correctly blocked by a newly observed parser gap)     |
 
 ## Current state
 
@@ -36,17 +37,17 @@ Verification status per path — this table is the authoritative summary; the pe
 | Codex `implement` start           | yes         | yes                                  | **yes** (codex-cli 0.154.0-alpha.6.2, session 9)                   |
 | Codex `revise` / resume           | yes         | yes                                  | **yes** (same session id, sandbox override + child cwd, session 9) |
 | Git review context (bounded diff) | yes         | yes (temp git repos + fake adapters) | **yes** (embedded in the live M12 review prompt)                   |
-| Orchestrator full loop            | yes         | yes (fake adapters)                  | no                                                                 |
+| Orchestrator full loop            | yes         | yes (fake adapters)                  | **partial** (real plan + implement; review not reached in M13)     |
 
 Review prompts carry a bounded, read-only git diff of the working tree (session 5); it is memory-only and never persisted.
 
-Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1.260) on a throwaway repository. M11 used two separately approved attempts: session 8 recorded one failed Codex start caused by an incomplete Desktop runtime path; session 9 selected the complete runtime and successfully ran one new start plus one exact-session resume. Session 10 (M12) made one approved Claude review start over a bounded deliberate defect and received `request_changes`. Codex start/resume and Claude plan/review starts are now live-validated; Claude resume and the full two-provider loop remain unverified.
+Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1.260) on a throwaway repository. M11 used two separately approved attempts: session 8 recorded one failed Codex start caused by an incomplete Desktop runtime path; session 9 selected the complete runtime and successfully ran one new start plus one exact-session resume. Session 10 (M12) made one approved Claude review start over a bounded deliberate defect and received `request_changes`. Session 11 (M13) connected the real Orchestrator, SQLite, Claude plan start and Codex implement start. Codex created only the requested files and its tests passed, but its Windows `pwsh.exe -Command 'npm test'` event was not recognised as a test command. The post-implementation guard therefore stopped before Claude review resume. The parser gap is fixed and fixture-tested offline; no live retry was made. Claude resume and a completed full two-provider loop remain unverified.
 
 ## Verification log
 
 | Command                                                 | Result                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                              | 15 files, 200 tests passed (197 → 200 in M12: sanitized live review parser and adapter regressions)                                                                                                                                                                                                                           |
+| `npm test`                                              | 15 files, 202 tests passed (200 → 202 in M13: Windows PowerShell-wrapped Codex test-command parser and adapter regressions)                                                                                                                                                                                                   |
 | `npm run typecheck`                                     | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
 | `npm run lint`                                          | clean                                                                                                                                                                                                                                                                                                                         |
 | `npx prettier --check .`                                | clean                                                                                                                                                                                                                                                                                                                         |
@@ -169,6 +170,28 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
   200 tests, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, and
   `git diff --check`.
 - Remaining live gaps: Claude resume; the full orchestrator plan → approve → implement → review loop with both providers; long-run timeout/cancellation; a real permission denial; and deliberate out-of-root sandbox rejection (not attempted).
+
+## Live two-provider orchestrator validation (session 11, M13 — partial)
+
+### Preflight and bounded calls
+
+- Baseline was `origin/main` commit `0ab254e`; work ran on `feature/live-e2e-validation`. Before any model call, the complete product suite passed at 15 files / 200 tests, both CLI versions/help/auth/runtime checks passed, and scripted approve/request-changes scenarios verified the production Orchestrator/SQLite/collector structure, `maxReviewRounds=1`, exact call order, persistence reopening and fourth-call rejection with zero model calls.
+- Claude Code was `2.1.260`; Codex was `codex-cli 0.154.0-alpha.6.2` from a complete Desktop runtime containing all three required sibling helpers. The `.codex/.sandbox-bin` copy was not used. Discovered executable paths were passed only to the ignored one-off harness and were not added to product code.
+- The user authorized at most three ordered calls. M13 made exactly **two**: Claude `plan` start once, then Codex `implement` start once. There were no retries, Codex resumes, Claude review starts/resumes, revisions, or other model/API calls. The third call was not made because the implementation guard failed.
+
+### Observed live result
+
+- Claude plan completed in **40,503 ms** with a stored session and a valid three-step plan: create `greet.js`, create a `node:test` test, then run `npm test`. Normalized adapter order was `session_started → usage_reported → run_completed`. Usage was input **328,971**, cached input **253,876**, output **1,721**, reasoning **601**, total **330,692**, source `actual`.
+- Codex implementation reached a provider completion in **39,360 ms**, created only `greet.js` and `greet.test.js`, and ran `npm test` successfully (1 test, 0 failures). Its normalized stream before the guard contained `session_started`, four command starts/completions, `usage_reported`, then the guard substituted `run_failed(M13_POST_IMPLEMENT_GUARD)` for `run_completed`. Usage was input **97,143**, cached input **88,576**, output **829**, reasoning **129**, total **97,972**, source `actual`.
+- Root cause: Codex reported the test as a command string wrapped by the Desktop runtime's PowerShell host: `"<runtime>\\pwsh.exe" -Command 'npm test'`. The parser recognised direct `npm test` commands only, so `testsPassed` remained `null`. The one-off guard required `testsPassed === true` and correctly prevented a review from starting even though the files and independent test were valid.
+- The parser now recognises test commands only after a PowerShell executable plus its `-Command` boundary. A field-whitelisted fixture preserves the wrapper shape, exit code and observed usage while replacing the runtime path and output. Parser and adapter regression tests prove `testsPassed=true`; direct-command, failed-command, structured-error, usage-before-terminal and single-terminal behaviours remain covered.
+- Persisted state transitions were `draft → awaiting_approval → queued → implementing → failed`; final failure was `M13_POST_IMPLEMENT_GUARD`, `reviewRound=0`, with no review record. The persisted timeline had 24 events; the two runs, four messages and two usage records reopened identically from SQLite. Aggregate task/project usage was input **426,114**, cached input **342,452**, output **2,550**, reasoning **730**, total **428,664**, all actual. Review markers and unified-diff text were absent from storage.
+
+### Workspace and cleanup
+
+- Throwaway parent: `C:\Users\Study\AppData\Local\Temp\orchestration-m13-e2e-20260916-004217-study`; repository: its `repo` child; retained DB: `m13.sqlite`. Initial HEAD remains `ac517dbb9d0df4ea1f02c6f2caf2b2dfa6680a98`; final status is exactly `?? greet.js` and `?? greet.test.js`. `package.json`, `README.md` and the parent sentinel retained their initial hashes, no dependency was added, and the product DB hash remained `52A371445CE0812CA930AEA418E7D7E9D6459F1778A6E14CB56592F08F5A08AF`.
+- The Claude plan start created one user plan file at `C:\Users\Study\.claude\plans\do-not-add-external-pure-flame.md`; it was recorded by path and left intact. No raw provider stream was retained. The exact ignored harness path `D:\PersonalProject\Orchestration_bot\data\live-captures\m13-live-e2e-harness.mjs` was removed after offline regression work.
+- M13 is **partial**, not complete. The implementation and safety stop are live-verified, but Claude review resume, exact plan-session reuse on review, bounded live review prompt delivery, verdict and completed terminal state require a separately authorized future run. This task's failed stage was not retried.
 
 ## Review context / git diff capture (session 5)
 
@@ -382,7 +405,7 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 
 M0–M10 were built and validated by Claude Code at the user's explicit request. That bootstrap phase is finished.
 
-- **Default implementer from here on: Codex.** The current execution document is `docs/CODEX_NEXT_TASK.md` (M12).
+- **Default implementer from here on: Codex.** The current execution document is `docs/CODEX_NEXT_TASK.md` (M13).
 - **Claude's runtime role stays planner / reviewer** (`plan` and `review` runs only, always `--permission-mode plan`).
 - During development Claude can still be asked by the user to plan, review, write documentation, or implement a specific piece — that needs an explicit request, exactly as M0–M10 did. Nothing here forbids it.
 - Real AI invocations (Claude or Codex) happen only inside a per-task approval the user granted, with the expected call count stated beforehand. There is no standing approval.
@@ -390,6 +413,6 @@ M0–M10 were built and validated by Claude Code at the user's explicit request.
 
 ## Next exact work
 
-1. **Live end-to-end loop** — plan → approve → implement → bounded review → complete with both real CLIs under explicit per-call approval.
+1. **Complete the M13 live end-to-end loop** in a separately approved task after the PowerShell-wrapper parser fix — plan → approve → implement → exact-session bounded review → complete. M13's original call budget is exhausted for retry purposes.
 2. Validate Claude resume and real cancellation/timeout/permission-denial behaviour only under a separately approved bounded task.
 3. Then evaluate an explicitly gated emergency-repair path and/or packaging.

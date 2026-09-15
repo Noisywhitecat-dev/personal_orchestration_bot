@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"sess-live-e2e-0001"}
+{"type":"item.started","item":{"id":"item-test","type":"command_execution","command":"\"<runtime>\\pwsh.exe\" -Command 'npm test'"}}
+{"type":"item.completed","item":{"id":"item-test","type":"command_execution","command":"\"<runtime>\\pwsh.exe\" -Command 'npm test'","aggregated_output":"<redacted test output>","exit_code":0,"status":"completed"}}
+{"type":"turn.completed","usage":{"input_tokens":97143,"cached_input_tokens":88576,"output_tokens":829,"reasoning_output_tokens":129,"total_tokens":97972}}

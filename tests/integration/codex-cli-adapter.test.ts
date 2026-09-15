@@ -150,6 +150,18 @@ describe('CodexCliAdapter (stub executable)', () => {
     ).toBe(false);
   });
 
+  it('Windows PowerShell-wrapped test command → testsPassed true', async () => {
+    const events = await collect(
+      adapter(fixture('live-pwsh-test-command-v0.154.0-alpha.6.2.jsonl')).start(input()),
+    );
+    const done = events.at(-1);
+    expect(
+      done?.type === 'run_completed' &&
+        done.result.kind === 'implementation' &&
+        done.result.testsPassed,
+    ).toBe(true);
+  });
+
   it('no usage → exactly one unavailable usage event', async () => {
     const events = await collect(adapter(fixture('no-usage.jsonl')).start(input()));
     const usages = events.filter((e) => e.type === 'usage_reported');
