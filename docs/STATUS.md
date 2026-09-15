@@ -14,6 +14,7 @@ Last updated: 2026-09-15 (session 3 — asynchronous planning, Claude Code)
 | M5 `docs/CODEX_NEXT_TASK.md`    | Done                                                                  |
 | M6 Real Codex CLI adapter       | Done (stub-tested; not yet run against the real CLI)                  |
 | M7 Asynchronous planning        | Done (POST /api/requests returns 202 + draft; planning in background) |
+| M8 Real Claude Code CLI adapter | Done (stub-tested; no live run)                                       |
 
 ## Current state
 
@@ -25,7 +26,7 @@ A real **Codex CLI adapter** now exists (`CodexCliAdapter`) behind `CODEX_ADAPTE
 
 | Command                                    | Result                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                 | 10 files, 96 tests passed (85 → 96: +9 async-planning, +1 api cancel-during-planning, +1 persistence draft recovery)                                                                                                                                                                                                          |
+| `npm test`                                 | 13 files, 142 tests passed (96 → 142: +19 Claude parser, +6 Claude argv/forbidden, +21 Claude adapter integration)                                                                                                                                                                                                            |
 | `npm run typecheck`                        | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
 | `npm run lint`                             | clean                                                                                                                                                                                                                                                                                                                         |
 | `npx prettier --check .`                   | clean                                                                                                                                                                                                                                                                                                                         |
@@ -111,6 +112,15 @@ src/server/ app.ts main.ts routes/api.ts events/sse.ts
 src/shared/contracts.ts
 src/web/ index.html styles.css main.tsx api.ts pages/App.tsx components/UsageTable.tsx hooks/useEvents.ts
 tests/integration/ orchestrator.test.ts persistence.test.ts api.test.ts
+```
+
+Added in session 4:
+
+```
+src/infrastructure/agents/ claude-jsonl-parser.ts claude-jsonl-parser.test.ts claude-cli-adapter.ts claude-cli-adapter.test.ts
+tests/fixtures/claude/ stub-claude.mjs plan-success.jsonl review-approve.jsonl review-changes.jsonl resume.jsonl no-usage.jsonl cli-error.jsonl malformed.jsonl invalid-result.jsonl prose-only.jsonl duplicate-terminal.jsonl model-usage-only.jsonl
+tests/integration/claude-cli-adapter.test.ts
+src/server/main.ts (CLAUDE_ADAPTER selection)   .env.example   README.md
 ```
 
 Added in session 2:
