@@ -20,9 +20,9 @@ M0–M10 are complete. The default implementer from here on is **Codex**; Claude
 
 ### Next validation
 
-| Milestone | Scope                                                                                                                        | Document                  |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| M11       | User-supervised live Codex start + resume validation (at most 2 real `codex exec` calls, throwaway repo, sanitized fixtures) | `docs/CODEX_NEXT_TASK.md` |
+| Milestone | Scope                                                                                     | Document                                                                                                                                                               |
+| --------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M11       | User-supervised live Codex start + resume validation (throwaway repo, sanitized fixtures) | Done — incomplete explicit Windows runtime fails fast; complete Desktop runtime verified with successful start and exact-session resume on codex-cli 0.154.0-alpha.6.2 |
 
 ### Later validation
 

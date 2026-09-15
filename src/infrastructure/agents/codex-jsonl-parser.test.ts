@@ -167,3 +167,113 @@ describe('CodexJsonlParser', () => {
     expect(parser.state.sessionId).toBeNull();
   });
 });
+
+describe('CodexJsonlParser: sanitized live failed start (codex-cli 0.154.0-alpha.6.2)', () => {
+  // Field-whitelisted from one real workspace-write start run. Session/item ids, paths,
+  // prompt-derived text and machine details were replaced; event order and usage are real.
+  it('maps the structured item error to failure with one terminal and usage first', () => {
+    const { events, parser } = parseFixture('live-start-missing-host-v0.154.0-alpha.6.2.jsonl');
+    expect(types(events)).toEqual([
+      'session_started',
+      'message_delta',
+      'message_delta',
+      'message_delta',
+      'usage_reported',
+      'run_failed',
+    ]);
+    expect(parser.state.sessionId).toBe('sess-live-missing-host-0001');
+    expect(parser.state.unknownCount).toBe(0);
+    expect(parser.state.malformedCount).toBe(0);
+    expect(terminals(events)).toHaveLength(1);
+    expect(types(events).indexOf('usage_reported')).toBeLessThan(
+      types(events).indexOf('run_failed'),
+    );
+    const failed = events.at(-1);
+    expect(failed?.type === 'run_failed' && failed.error.code).toBe('CODEX_ITEM_ERROR');
+    expect(failed?.type === 'run_failed' && failed.error.message).toContain('command host');
+  });
+
+  it('keeps the real usage values and leaves unsupported cache-write tokens unrepresented', () => {
+    expect(usage(parseFixture('live-start-missing-host-v0.154.0-alpha.6.2.jsonl').events)).toEqual({
+      inputTokens: 76731,
+      cachedInputTokens: 62208,
+      outputTokens: 633,
+      reasoningTokens: 216,
+      totalTokens: 77364,
+      source: 'actual',
+    });
+  });
+
+  it('contains no real ids, paths, machine details or prompt text', () => {
+    const text = readFileSync(
+      join(FIXTURES, 'live-start-missing-host-v0.154.0-alpha.6.2.jsonl'),
+      'utf8',
+    );
+    expect(text).not.toMatch(/[A-Za-z]:\\|\/Users\/|AppData|\.codex|"cwd"/);
+    expect(text).not.toContain('01a0a53d-1097-78f0-bf32-d34f695c95a4');
+    expect(text).not.toContain('Hello from M11');
+    expect(text).toContain('"thread_id":"sess-live-missing-host-0001"');
+  });
+});
+
+describe('CodexJsonlParser: sanitized live successful start/resume (codex-cli 0.154.0-alpha.6.2)', () => {
+  const fixtureNames = [
+    'live-start-v0.154.0-alpha.6.2.jsonl',
+    'live-resume-v0.154.0-alpha.6.2.jsonl',
+  ] as const;
+
+  it.each(fixtureNames)('%s maps commands, file change, usage and one completion', (name) => {
+    const { events, parser } = parseFixture(name);
+    expect(types(events)).toEqual([
+      'session_started',
+      'message_delta',
+      'command_started',
+      'command_completed',
+      'message_delta',
+      'usage_reported',
+      'run_completed',
+    ]);
+    expect(parser.state.sessionId).toBe('sess-live-success-0001');
+    expect(parser.state.unknownCount).toBe(0);
+    expect(parser.state.malformedCount).toBe(0);
+    expect(terminals(events)).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'usage_reported')).toHaveLength(1);
+    expect(types(events).indexOf('usage_reported')).toBeLessThan(
+      types(events).indexOf('run_completed'),
+    );
+    expect(completion(events).changedFiles).toEqual(['hello.txt']);
+    const command = events.find((event) => event.type === 'command_completed');
+    expect(command?.type === 'command_completed' && command.exitCode).toBe(0);
+  });
+
+  it('keeps start and resume usage separate with the observed values', () => {
+    expect(usage(parseFixture(fixtureNames[0]).events)).toEqual({
+      inputTokens: 57058,
+      cachedInputTokens: 49664,
+      outputTokens: 331,
+      reasoningTokens: 28,
+      totalTokens: 57389,
+      source: 'actual',
+    });
+    expect(usage(parseFixture(fixtureNames[1]).events)).toEqual({
+      inputTokens: 119922,
+      cachedInputTokens: 110080,
+      outputTokens: 643,
+      reasoningTokens: 28,
+      totalTokens: 120565,
+      source: 'actual',
+    });
+  });
+
+  it('uses the same sanitized session id on resume and carries no sensitive raw data', () => {
+    for (const name of fixtureNames) {
+      const text = readFileSync(join(FIXTURES, name), 'utf8');
+      expect(text).not.toMatch(/[A-Za-z]:\\|\/Users\/|AppData|\.codex|"cwd"/);
+      expect(text).not.toContain('01a0a551-45b8-73f3-9ab5-7b04065e252f');
+      expect(text).not.toContain('Hello from M11');
+      expect(text).not.toContain('Hello again from M11');
+      expect(text).toContain('"thread_id":"sess-live-success-0001"');
+      expect(text).toContain('<redacted>');
+    }
+  });
+});

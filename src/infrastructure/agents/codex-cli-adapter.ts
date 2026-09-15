@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+
 import type { AgentEvent } from '../../domain/agent-events.js';
 import { OrchestrationError } from '../../domain/errors.js';
 import type { RunId, SessionId } from '../../domain/ids.js';
@@ -19,6 +22,53 @@ import { CodexJsonlParser } from './codex-jsonl-parser.js';
  */
 
 export const SANDBOX_MODE = 'workspace-write';
+
+export const REQUIRED_WINDOWS_CODEX_RUNTIME_FILES = [
+  'codex.exe',
+  'codex-code-mode-host.exe',
+  'codex-command-runner.exe',
+  'codex-windows-sandbox-setup.exe',
+] as const;
+
+/**
+ * Fail fast for an explicitly selected Windows Codex binary whose sibling runtime is incomplete.
+ * PATH-based `codex` and wrapper/stub executables are intentionally left to normal spawn lookup.
+ */
+export function assertCompleteLocalCodexRuntime(
+  executable: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  if (platform !== 'win32' || !isAbsolute(executable)) return;
+  const executableName = basename(executable).toLowerCase();
+  if (executableName !== 'codex.exe') return;
+
+  const runtimeDir = dirname(executable);
+  const missing = REQUIRED_WINDOWS_CODEX_RUNTIME_FILES.filter(
+    (file) => !existsSync(join(runtimeDir, file)),
+  );
+  if (missing.length === 0) return;
+
+  throw new OrchestrationError(
+    'VALIDATION_FAILED',
+    `Incomplete Codex runtime for executable "${executable}"; missing required component(s): ${missing.join(', ')}`,
+  );
+}
+
+/** Keep provider-reported changes inside the project and expose portable relative paths. */
+export function normalizeCodexChangedFiles(
+  changedFiles: readonly string[],
+  projectRoot: string,
+): string[] {
+  const root = resolve(projectRoot);
+  const normalized: string[] = [];
+  for (const file of changedFiles) {
+    const rel = relative(root, resolve(root, file));
+    if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue;
+    const portable = rel.split(sep).join('/');
+    if (!normalized.includes(portable)) normalized.push(portable);
+  }
+  return normalized;
+}
 
 /** Never allowed in argv, in any position. Tested in codex-cli-adapter.test.ts. */
 export const FORBIDDEN_CODEX_ARGS: readonly string[] = [
@@ -122,6 +172,7 @@ export class CodexCliAdapter implements AgentAdapter {
 
   constructor(opts: CodexCliAdapterOptions) {
     this.executable = opts.executable ?? 'codex';
+    assertCompleteLocalCodexRuntime(this.executable);
     this.extraArgs = opts.extraArgs ?? [];
     this.clock = opts.clock;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -246,12 +297,13 @@ export class CodexCliAdapter implements AgentAdapter {
     event: Extract<AgentEvent, { type: 'run_completed' }>,
     input: AgentRunInput,
   ): AsyncGenerator<AgentEvent> {
-    if (
-      event.result.kind !== 'implementation' ||
-      event.result.changedFiles.length > 0 ||
-      !this.gitStatusFallback
-    ) {
+    if (event.result.kind !== 'implementation') {
       yield event;
+      return;
+    }
+    const normalized = normalizeCodexChangedFiles(event.result.changedFiles, input.projectRoot);
+    if (normalized.length > 0 || !this.gitStatusFallback) {
+      yield { ...event, result: { ...event.result, changedFiles: normalized } };
       return;
     }
     const files = await this.gitStatusFiles(input.projectRoot);
