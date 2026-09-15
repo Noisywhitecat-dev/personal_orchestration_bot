@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"sess-dup","model":"claude-test","permissionMode":"plan"}
+{"type":"result","subtype":"success","is_error":false,"result":"x","structured_output":{"kind":"review","verdict":"approve","summary":"First terminal wins.","changeRequests":[]},"session_id":"sess-dup","usage":{"input_tokens":1,"output_tokens":1}}
+{"type":"result","subtype":"success","is_error":false,"result":"y","structured_output":{"kind":"review","verdict":"request_changes","summary":"Must be ignored.","changeRequests":["nope"]},"session_id":"sess-dup","usage":{"input_tokens":999,"output_tokens":999}}
+{"type":"system","subtype":"init","session_id":"sess-dup-late","model":"claude-test","permissionMode":"plan"}
+{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["also ignored"]}

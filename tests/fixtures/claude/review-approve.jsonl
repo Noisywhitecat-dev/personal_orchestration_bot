@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"sess-review-0001","model":"claude-test","permissionMode":"plan","tools":["Read","Grep"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Reviewed the diff and test output."}]},"session_id":"sess-review-0001"}
+{"type":"result","subtype":"success","is_error":false,"result":"done","structured_output":{"kind":"review","verdict":"approve","summary":"Implementation matches the plan; tests pass.","changeRequests":[]},"session_id":"sess-review-0001","usage":{"input_tokens":500,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":60}}

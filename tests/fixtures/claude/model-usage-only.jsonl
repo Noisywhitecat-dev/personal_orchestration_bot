@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"sess-mu","model":"claude-test","permissionMode":"plan"}
+{"type":"result","subtype":"success","is_error":false,"result":"x","structured_output":{"kind":"review","verdict":"approve","summary":"Usage only per model.","changeRequests":[]},"session_id":"sess-mu","modelUsage":{"claude-a":{"inputTokens":100,"outputTokens":20,"cacheReadInputTokens":400,"cacheCreationInputTokens":0},"claude-b":{"inputTokens":10,"outputTokens":5,"cacheReadInputTokens":0,"cacheCreationInputTokens":50}}}

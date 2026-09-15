@@ -21,6 +21,21 @@ npm test          # unit + integration tests (no real CLI needed)
 npm run dev       # server on :3080, web UI on :5173
 ```
 
+## Adapters
+
+Both AI adapters default to **fake** so the whole flow runs without any CLI. Real CLIs are opt-in via environment variables (see `.env.example`):
+
+| Variable                                                            | Values                   | Notes                                                                                                                                                                    |
+| ------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CLAUDE_ADAPTER`                                                    | `fake` (default) / `cli` | `cli` runs the local Claude Code CLI using your existing login. Planning and review always run with `--permission-mode plan` (read-only); the prompt is passed on stdin. |
+| `CLAUDE_EXECUTABLE`                                                 | path or name             | default `claude`                                                                                                                                                         |
+| `CLAUDE_TIMEOUT_MS`                                                 | positive integer         | default 600000                                                                                                                                                           |
+| `CLAUDE_MAX_TURNS`                                                  | positive integer         | passed as `--max-turns` only when set (not listed by `claude 2.1.260 --help`)                                                                                            |
+| `CODEX_ADAPTER`                                                     | `fake` (default) / `cli` | `cli` runs `codex exec` with `--sandbox workspace-write`                                                                                                                 |
+| `CODEX_EXECUTABLE`, `CODEX_TIMEOUT_MS`, `CODEX_SKIP_GIT_REPO_CHECK` |                          | see `.env.example`                                                                                                                                                       |
+
+No API keys are read from `.env`. Neither real CLI has been exercised end-to-end yet; both adapters are verified against Node stubs that replay JSONL fixtures.
+
 ## Documents
 
 | File                                               | Purpose                                           |

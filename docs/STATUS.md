@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-09-15 (session 3 — asynchronous planning, Claude Code)
+Last updated: 2026-09-15 (session 4 — real Claude Code CLI adapter, Claude Code)
 
 ## Completed milestones
 
@@ -14,24 +14,26 @@ Last updated: 2026-09-15 (session 3 — asynchronous planning, Claude Code)
 | M5 `docs/CODEX_NEXT_TASK.md`    | Done                                                                  |
 | M6 Real Codex CLI adapter       | Done (stub-tested; not yet run against the real CLI)                  |
 | M7 Asynchronous planning        | Done (POST /api/requests returns 202 + draft; planning in background) |
+| M8 Real Claude Code CLI adapter | Done (stub-tested; no live run)                                       |
 
 ## Current state
 
 Complete vertical slice runs end-to-end against **fake adapters**: register project → request → plan → approve → fake implement → fake review (optional revision round, same Codex session) → completed / failed. State, runs, messages, timeline and usage persist in SQLite and survive browser refresh and server restart.
 
-A real **Codex CLI adapter** now exists (`CodexCliAdapter`) behind `CODEX_ADAPTER=cli`. The default remains `fake`; Claude is still the fake adapter. The real adapter has been verified only against a Node stub that replays JSONL fixtures — **no real Codex run has been executed yet**.
+Real CLI adapters exist for both roles: `CodexCliAdapter` behind `CODEX_ADAPTER=cli` and `ClaudeCliAdapter` behind `CLAUDE_ADAPTER=cli`. Both default to `fake`. Both have been verified only against Node stubs that replay JSONL fixtures — **no real Codex run and no real Claude model call has been executed yet**.
 
 ## Verification log
 
-| Command                                    | Result                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                 | 10 files, 96 tests passed (85 → 96: +9 async-planning, +1 api cancel-during-planning, +1 persistence draft recovery)                                                                                                                                                                                                          |
-| `npm run typecheck`                        | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
-| `npm run lint`                             | clean                                                                                                                                                                                                                                                                                                                         |
-| `npx prettier --check .`                   | clean                                                                                                                                                                                                                                                                                                                         |
-| `npm run build`                            | server → `dist/server`, web → `dist/web`                                                                                                                                                                                                                                                                                      |
-| Startup check (`node dist/server/main.js`) | `CODEX_ADAPTER` unset → `codex=fake`; `=cli` → `codex=cli (<exe>, sandbox=workspace-write, timeout=900000ms)`; `=bogus` → process exits with `Invalid CODEX_ADAPTER`                                                                                                                                                          |
-| Manual (browser, `npm start`)              | Registered this repo, submitted `... [fake-changes:1]`, approved; observed implement → review(changes) → revise → review(approve) → completed; round 2/2; Claude usage tagged _estimated_, Codex _actual_; reload and server restart restored state (`/api/projects/:id` showed `completed round=2`, claude=920, codex=2050). |
+| Command                                            | Result                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm test`                                         | 13 files, 142 tests passed (96 → 142: +19 Claude parser, +6 Claude argv/forbidden, +21 Claude adapter integration)                                                                                                                                                                                                            |
+| `npm run typecheck`                                | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
+| `npm run lint`                                     | clean                                                                                                                                                                                                                                                                                                                         |
+| `npx prettier --check .`                           | clean                                                                                                                                                                                                                                                                                                                         |
+| `npm run build`                                    | server → `dist/server`, web → `dist/web`                                                                                                                                                                                                                                                                                      |
+| Startup check (Claude, `node dist/server/main.js`) | `CLAUDE_ADAPTER` unset → `claude=fake`; `=cli` → `claude=cli (claude, permission-mode=plan read-only, timeout=600000ms, max-turns=8)`; `=bogus`, `CLAUDE_MAX_TURNS=0`, `CLAUDE_TIMEOUT_MS=abc` → process exits with `Invalid CLAUDE_*`                                                                                        |
+| Startup check (`node dist/server/main.js`)         | `CODEX_ADAPTER` unset → `codex=fake`; `=cli` → `codex=cli (<exe>, sandbox=workspace-write, timeout=900000ms)`; `=bogus` → process exits with `Invalid CODEX_ADAPTER`                                                                                                                                                          |
+| Manual (browser, `npm start`)                      | Registered this repo, submitted `... [fake-changes:1]`, approved; observed implement → review(changes) → revise → review(approve) → completed; round 2/2; Claude usage tagged _estimated_, Codex _actual_; reload and server restart restored state (`/api/projects/:id` showed `completed round=2`, claude=920, codex=2050). |
 
 ## Important design decisions
 
@@ -44,6 +46,44 @@ A real **Codex CLI adapter** now exists (`CodexCliAdapter`) behind `CODEX_ADAPTE
 - **Vite 6 / Vitest 3** instead of Vite 5 / Vitest 2: Vite 5's builtin list does not know `node:sqlite`, so tests failed to resolve it. Upgrading was cleaner than a resolver workaround.
 - **Fake adapters** are deterministic. FakeClaude: plan usage `actual`, review usage `estimated`; `[fake-changes:N]` in the request forces N change-request rounds. FakeCodex: `[fake-fail]` forces `run_failed`.
 - **Project root** validation (absolute + `realpath` + must exist) happens in `src/server/routes/api.ts`, keeping `application/` free of `fs`.
+
+## Claude Code CLI adapter (session 4)
+
+### CLI facts verified on this machine (read-only: `--version`, `--help`)
+
+- Version: **2.1.260 (Claude Code)**, binary at `%APPDATA%\Claude\claude-code\2.1.260\claude.exe` (desktop-app install; **not on PATH** → set `CLAUDE_EXECUTABLE` for `cli`).
+- Listed: `-p/--print`, `--output-format text|json|stream-json`, `--verbose`, `--permission-mode acceptEdits|auto|bypassPermissions|manual|dontAsk|plan`, `--permission-prompts host|none`, `--json-schema <schema>`, `-r/--resume <session-id>`, `-c/--continue`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--model`, `--include-partial-messages`, `--max-budget-usd`.
+- **Not listed: `--max-turns`.** It is therefore passed only when `CLAUDE_MAX_TURNS` is set explicitly; the default leaves it out. Never verified against a model.
+
+### Final argv (after the executable)
+
+```
+start : --print --output-format stream-json --verbose --permission-mode plan --permission-prompts none --json-schema <plan|review schema> [--max-turns N] [--model M]
+resume: same + --resume <sessionId>
+```
+
+- Prompt always on stdin; never in argv or logs. Child `cwd` = canonical project root.
+- `--permission-prompts none`: anything that would prompt is denied automatically (non-interactive safety on top of plan mode).
+- `--continue` is never used (it would silently pick the most recent session).
+- Forbidden (tested absent; `assertNoForbiddenClaudeArgs` rejects them): `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--continue`, `-c`, any `--permission-mode` other than `plan`, argv without `--permission-mode`.
+- Session ids must match `^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$` (no option-like values).
+
+### Behaviour
+
+- Supported kinds: `plan`, `review`. `implement`/`revise` → `UNSUPPORTED_KIND` with no child process.
+- Parser mapping: `system.init` → `session_started`; assistant `text` → `message_delta` (≤ 8 KB per run); assistant `thinking` → `reasoning_delta`; `result.usage` → `usage_reported`; success + valid structured output → `run_completed`; `is_error`/`error_*` → `run_failed` (`CLAUDE_ERROR`). `user`, `stream_event`, unknown types ignored (counted).
+- Result: `structured_output` → JSON `result` string → single ```json fence → else `AGENT_RESULT_INVALID`. Validated with zod (`PlanResultSchema`, `ReviewResultSchema`, strict, non-empty strings, non-empty steps, `request_changes` needs ≥ 1 request). The same JSON Schema is passed via `--json-schema`. No prose extraction, no default plan, no auto-approve.
+- Usage: `inputTokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens`; `cachedInputTokens = cache_read_input_tokens` (subset, not re-added); `totalTokens = inputTokens + outputTokens`; `reasoningTokens = null`. Top-level `usage` wins; `modelUsage` is summed only when `usage` is absent (fixture `model-usage-only.jsonl`). Cost fields ignored. Exactly one `usage_reported` per run, before the terminal; `unavailable` when none.
+- Resume: the known id is re-announced once; the CLI echoing the same id is suppressed; a different id is passed through so the orchestrator stores the latest.
+- Terminal exactly once; later lines ignored. Process end without result → `TIMEOUT` / `CANCELLED` / `SPAWN_FAILED` / `CLAUDE_EXITED_WITHOUT_RESULT` with ≤ 500-char stderr tail. `cancel(runId)` and `input.signal` abort the child; controllers and tracked children are cleaned up (asserted).
+- Fixtures: `tests/fixtures/claude/` (`plan-success`, `review-approve`, `review-changes`, `resume`, `no-usage`, `cli-error`, `malformed`, `invalid-result`, `prose-only`, `duplicate-terminal`, `model-usage-only`) and `stub-claude.mjs`. All synthetic.
+
+### Not yet verified / risks
+
+- The stream-json shapes (`system.init`, `assistant.message.content[]`, `result.structured_output`, `result.usage`) follow the documented format but were **not** confirmed against live 2.1.260 output. First real run: capture stdout as `tests/fixtures/claude/live-*.jsonl` and adjust the parser header table if names differ.
+- Whether `--json-schema` populates `structured_output` on this version, and whether `--permission-mode plan` + `--permission-prompts none` completes without prompting, is unverified.
+- `--max-turns` support is unknown on 2.1.260 (absent from help); a wrong flag would make the CLI exit → surfaces as `CLAUDE_EXITED_WITHOUT_RESULT`.
+- Review prompts still carry no git diff; that is the next milestone and must not be solved by widening Claude's permissions.
 
 ## Asynchronous planning (session 3)
 
@@ -113,6 +153,15 @@ src/web/ index.html styles.css main.tsx api.ts pages/App.tsx components/UsageTab
 tests/integration/ orchestrator.test.ts persistence.test.ts api.test.ts
 ```
 
+Added in session 4:
+
+```
+src/infrastructure/agents/ claude-jsonl-parser.ts claude-jsonl-parser.test.ts claude-cli-adapter.ts claude-cli-adapter.test.ts
+tests/fixtures/claude/ stub-claude.mjs plan-success.jsonl review-approve.jsonl review-changes.jsonl resume.jsonl no-usage.jsonl cli-error.jsonl malformed.jsonl invalid-result.jsonl prose-only.jsonl duplicate-terminal.jsonl model-usage-only.jsonl
+tests/integration/claude-cli-adapter.test.ts
+src/server/main.ts (CLAUDE_ADAPTER selection)   .env.example   README.md
+```
+
 Added in session 2:
 
 ```
@@ -136,5 +185,5 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 ## Next exact work
 
 1. **First live Codex run (user-supervised)**: `CODEX_ADAPTER=cli CODEX_EXECUTABLE=<path> npm start`, register a throwaway git repo, submit a trivial request, approve. Save the raw JSONL (`codex exec --json` stdout) as `tests/fixtures/codex/live-*.jsonl` and fix parser mappings if event names differ. Confirm resume sandbox and cwd behaviour.
-2. **Real Claude Code adapter** (`claude -p --output-format stream-json`): same shape as the Codex adapter (process runner + stream parser + argv builders + stub fixtures). Planning now runs in the background, so a slow planner no longer blocks HTTP.
-3. Git-diff capture for review input.
+2. **Git diff capture for review input**: collect `git diff` (bounded) after the Codex run and include it in the review prompt, so the reviewer sees real changes. Keep Claude read-only.
+3. First live Claude run (user-supervised): `CLAUDE_ADAPTER=cli CLAUDE_EXECUTABLE=<path> npm start`, submit a trivial request, capture stdout as a live fixture, confirm `structured_output`, permission behaviour and whether `--max-turns` exists.
