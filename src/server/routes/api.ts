@@ -71,7 +71,7 @@ export function canonicalProjectRoot(input: string): string {
  *   GET  /api/projects
  *   POST /api/projects                    { name, rootPath }
  *   GET  /api/projects/:id                → ProjectDetailResponse
- *   POST /api/requests                    { projectId, request }
+ *   POST /api/requests                    { projectId, request } → 202 + draft task (planning is async)
  *   GET  /api/tasks/:id                   → TaskDetailResponse
  *   POST /api/tasks/:id/approve
  *   POST /api/tasks/:id/reject            { reason? }
@@ -108,7 +108,8 @@ export async function handleApi(req: ApiRequest): Promise<ApiResult> {
   if (seg[1] === 'requests' && seg.length === 2 && method === 'POST') {
     const input = parse(SubmitRequestBody, body);
     const task = await orchestrator.submitRequest(ids.asProjectId(input.projectId), input.request);
-    return { status: 201, body: { task } };
+    // Planning runs in the background; the client follows progress over SSE.
+    return { status: 202, body: { task } };
   }
 
   if (seg[1] === 'tasks' && seg[2]) {

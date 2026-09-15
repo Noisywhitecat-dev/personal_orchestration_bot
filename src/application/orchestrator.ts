@@ -122,8 +122,9 @@ export class Orchestrator {
   // ---------- commands ----------
 
   /**
-   * Create a task from a user request and ask the planner for a plan.
-   * Resolves when the task is `awaiting_approval` (or `failed`).
+   * Create a task from a user request and start planning in the background.
+   * Resolves immediately with the `draft` task; the planner moves it to
+   * `awaiting_approval` (or `failed`) later. Use `whenSettled()` to wait.
    */
   async submitRequest(projectId: ProjectId, request: string): Promise<Task> {
     const project = this.repos.projects.findById(projectId);
@@ -131,7 +132,7 @@ export class Orchestrator {
       throw new OrchestrationError('PROJECT_NOT_FOUND', `Project ${projectId} not found.`);
 
     const now = this.clock.now();
-    let task: Task = {
+    const task: Task = {
       id: asTaskId(this.ids.next()),
       projectId,
       request,
@@ -149,27 +150,10 @@ export class Orchestrator {
     this.repos.tasks.insert(task);
     this.bus.publish({ type: 'task_updated', task });
     this.addMessage(projectId, task.id, 'user', request);
+    this.appendTimeline(task.id, null, 'request_received', { length: request.length });
 
-    const outcome = await this.executeRun(task, 'claude', 'plan', request);
-    task = this.getTask(task.id);
-    if (outcome.sessionId) task = { ...task, claudeSessionId: outcome.sessionId };
-
-    if (outcome.result?.kind === 'plan') {
-      const { title, summary, steps } = outcome.result;
-      task = this.save({ ...task, plan: { title, summary, steps } });
-      task = this.move(task, 'awaiting_approval');
-      this.addMessage(
-        projectId,
-        task.id,
-        'claude',
-        `**${title}**\n${summary}\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\nApprove to send to Codex.`,
-      );
-    } else {
-      task = this.fail(
-        task,
-        outcome.error ?? { code: 'AGENT_RESULT_INVALID', message: 'Planner returned no plan.' },
-      );
-    }
+    // Registered synchronously so whenSettled() right after this call sees it.
+    this.startPipeline(task.id, (signal) => this.runPlanning(task.id, signal));
     return task;
   }
 
@@ -178,13 +162,16 @@ export class Orchestrator {
     let task = this.getTask(taskId);
     task = this.move(task, 'queued', { userApproved: true });
     this.addMessage(task.projectId, task.id, 'system', 'Plan approved. Sending to Codex.');
-    this.startPipeline(task.id);
+    this.startImplementation(task.id);
     return task;
   }
 
+  /** User rejection. Allowed while `draft` (aborts planning) or `awaiting_approval`. */
   reject(taskId: TaskId, reason?: string): Task {
     let task = this.getTask(taskId);
+    // Move first so a late planner result sees a non-draft state and leaves it alone.
     task = this.move(task, 'cancelled');
+    this.aborts.get(taskId)?.abort();
     this.addMessage(
       task.projectId,
       task.id,
@@ -217,17 +204,27 @@ export class Orchestrator {
   }
 
   /**
-   * Called on startup. Tasks interrupted mid-run are failed with INTERRUPTED;
-   * queued tasks are restarted.
+   * Called on startup. In-memory pipelines and abort controllers do not survive a restart, so:
+   * - `draft` (planning was in flight or never started): failed with INTERRUPTED. Planning is
+   *   deliberately NOT re-run automatically; that would spend tokens without the user asking.
+   * - `implementing` / `reviewing`: failed with INTERRUPTED, running runs closed.
+   * - `queued`: nothing had started, safe to restart the implementation pipeline.
+   * - `awaiting_approval` and terminal states: untouched.
    */
   recoverInterrupted(): { restarted: TaskId[]; failed: TaskId[] } {
     const restarted: TaskId[] = [];
     const failed: TaskId[] = [];
     for (const task of this.repos.tasks.listAll()) {
+      // A task with a live pipeline in this process was not interrupted.
+      if (this.pipelines.has(task.id)) continue;
       if (task.state === 'queued') {
-        this.startPipeline(task.id);
+        this.startImplementation(task.id);
         restarted.push(task.id);
-      } else if (task.state === 'implementing' || task.state === 'reviewing') {
+      } else if (
+        task.state === 'draft' ||
+        task.state === 'implementing' ||
+        task.state === 'reviewing'
+      ) {
         for (const run of this.repos.runs.listByTask(task.id)) {
           if (run.status === 'running') {
             this.repos.runs.update({
@@ -240,7 +237,10 @@ export class Orchestrator {
         }
         this.fail(task, {
           code: 'INTERRUPTED',
-          message: 'Server restarted while the task was running.',
+          message:
+            task.state === 'draft'
+              ? 'Server restarted while the plan was being prepared. Submit the request again.'
+              : 'Server restarted while the task was running.',
         });
         failed.push(task.id);
       }
@@ -248,13 +248,18 @@ export class Orchestrator {
     return { restarted, failed };
   }
 
-  // ---------- pipeline ----------
+  // ---------- pipelines ----------
 
-  private startPipeline(taskId: TaskId): void {
+  /**
+   * Register one background pipeline per task. Unexpected errors fail the task and emit
+   * `system_error`; a body that returns early because of an abort is not an error.
+   * Cleanup only removes the entry it created, so a pipeline registered later for the
+   * same task is never deleted by an older one finishing.
+   */
+  private startPipeline(taskId: TaskId, body: (signal: AbortSignal) => Promise<void>): void {
     if (this.pipelines.has(taskId)) return;
     const controller = new AbortController();
-    this.aborts.set(taskId, controller);
-    const p = this.runPipeline(taskId, controller.signal)
+    const promise: Promise<void> = body(controller.signal)
       .catch((err: unknown) => {
         const e =
           err instanceof OrchestrationError ? err : new OrchestrationError('INTERNAL', String(err));
@@ -263,13 +268,51 @@ export class Orchestrator {
         this.bus.publish({ type: 'system_error', code: e.code, message: e.message, taskId });
       })
       .finally(() => {
-        this.pipelines.delete(taskId);
-        this.aborts.delete(taskId);
+        if (this.pipelines.get(taskId) === promise) {
+          this.pipelines.delete(taskId);
+          this.aborts.delete(taskId);
+        }
       });
-    this.pipelines.set(taskId, p);
+    this.pipelines.set(taskId, promise);
+    this.aborts.set(taskId, controller);
   }
 
-  private async runPipeline(taskId: TaskId, signal: AbortSignal): Promise<void> {
+  private startImplementation(taskId: TaskId): void {
+    this.startPipeline(taskId, (signal) => this.runImplementation(taskId, signal));
+  }
+
+  /** draft → (Claude plan run) → awaiting_approval | failed. Leaves the task alone if it left `draft` meanwhile. */
+  private async runPlanning(taskId: TaskId, signal: AbortSignal): Promise<void> {
+    let task = this.getTask(taskId);
+    if (task.state !== 'draft' || signal.aborted) return;
+
+    const outcome = await this.executeRun(task, 'claude', 'plan', task.request, signal);
+
+    // Cancelled or rejected while the planner was running: cancel()/reject() own the final state.
+    task = this.getTask(taskId);
+    if (signal.aborted || task.state !== 'draft') return;
+
+    if (outcome.sessionId) task = this.save({ ...task, claudeSessionId: outcome.sessionId });
+
+    if (outcome.result?.kind === 'plan') {
+      const { title, summary, steps } = outcome.result;
+      task = this.save({ ...task, plan: { title, summary, steps } });
+      task = this.move(task, 'awaiting_approval');
+      this.addMessage(
+        task.projectId,
+        task.id,
+        'claude',
+        `**${title}**\n${summary}\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\nApprove to send to Codex.`,
+      );
+      return;
+    }
+    this.fail(
+      task,
+      outcome.error ?? { code: 'AGENT_RESULT_INVALID', message: 'Planner returned no plan.' },
+    );
+  }
+
+  private async runImplementation(taskId: TaskId, signal: AbortSignal): Promise<void> {
     let task = this.getTask(taskId);
 
     // Loop: implement → review → (approved | changes_requested → implement again | failed)

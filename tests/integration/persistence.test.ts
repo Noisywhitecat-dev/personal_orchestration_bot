@@ -49,6 +49,7 @@ describe('SQLite persistence', () => {
     const a = boot(path, 'a');
     const project = a.orchestrator.registerProject('demo', 'D:/fake/demo');
     const task = await a.orchestrator.submitRequest(project.id, 'Add a button');
+    await a.orchestrator.whenSettled(task.id);
     a.orchestrator.approve(task.id);
     await a.orchestrator.whenSettled(task.id);
     const before = {
@@ -76,7 +77,10 @@ describe('SQLite persistence', () => {
     const path = tempDbPath();
     const a = boot(path, 'a');
     const project = a.orchestrator.registerProject('demo', 'D:/fake/demo');
-    const task = await a.orchestrator.submitRequest(project.id, 'Add a button');
+    const draft = await a.orchestrator.submitRequest(project.id, 'Add a button');
+    expect(draft.state).toBe('draft');
+    await a.orchestrator.whenSettled(draft.id);
+    const task = a.orchestrator.getTask(draft.id);
     expect(task.state).toBe('awaiting_approval');
     a.db.close();
 
@@ -95,11 +99,41 @@ describe('SQLite persistence', () => {
     b.db.close();
   });
 
+  it('fails a draft whose plan run was interrupted, closing the run, and keeps awaiting_approval', async () => {
+    const path = tempDbPath();
+    const a = boot(path, 'a');
+    const project = a.orchestrator.registerProject('demo', 'D:/fake/demo');
+    const ready = await a.orchestrator.submitRequest(project.id, 'ready one');
+    await a.orchestrator.whenSettled(ready.id);
+    const draft = await a.orchestrator.submitRequest(project.id, 'interrupted one');
+    await a.orchestrator.whenSettled(draft.id);
+    // Rewind the second task to how a crash mid-planning leaves it on disk.
+    a.db.prepare("UPDATE tasks SET state = 'draft', plan_json = NULL WHERE id = ?").run(draft.id);
+    a.db
+      .prepare("UPDATE runs SET status = 'running', finished_at = NULL WHERE task_id = ?")
+      .run(draft.id);
+    a.db.close();
+
+    const b = boot(path, 'b');
+    const recovery = b.orchestrator.recoverInterrupted();
+    expect(recovery).toEqual({ restarted: [], failed: [draft.id] });
+    const t = b.orchestrator.getTask(draft.id);
+    expect(t.state).toBe('failed');
+    expect(t.failure?.code).toBe('INTERRUPTED');
+    const run = b.orchestrator.listRuns(draft.id)[0];
+    expect(run?.status).toBe('failed');
+    expect(run?.finishedAt).not.toBeNull();
+    expect(run?.error?.code).toBe('INTERRUPTED');
+    expect(b.orchestrator.getTask(ready.id).state).toBe('awaiting_approval');
+    b.db.close();
+  });
+
   it('fails a task that was implementing when the process died', async () => {
     const path = tempDbPath();
     const a = boot(path, 'a');
     const project = a.orchestrator.registerProject('demo', 'D:/fake/demo');
     const task = await a.orchestrator.submitRequest(project.id, 'Add a button');
+    await a.orchestrator.whenSettled(task.id);
     // Simulate crash mid-implementation by writing the state directly.
     a.db.prepare("UPDATE tasks SET state = 'implementing' WHERE id = ?").run(task.id);
     a.db.close();
