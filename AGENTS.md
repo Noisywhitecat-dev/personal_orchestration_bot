@@ -18,6 +18,7 @@ npm run lint
 - Keep `src/domain` free of HTTP, React, SQLite, and CLI-specific imports.
 - Never build shell command strings. Use `spawn(file, args, { shell: false })`.
 - Never use `--dangerously-bypass-approvals-and-sandbox` or equivalent.
+- Running a real AI CLI (`codex exec`, `claude -p`) needs the user's approval for that specific task, with the expected number of calls stated first. Never run one against this repository — use a throwaway directory.
 - Do not commit or push. Leave changes in the working tree.
 - Any PR or commit text you draft must be in **Korean** (code identifiers, paths, commands stay as-is).
 - Do not add dependencies without noting it in your final report.

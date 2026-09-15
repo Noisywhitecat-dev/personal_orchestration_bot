@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-09-15 (session 6 — live Claude planning validation, Claude Code)
+Last updated: 2026-09-15 (session 7 — documentation audit and Codex handoff, Claude Code)
 
 ## Completed milestones
 
@@ -14,19 +14,31 @@ Last updated: 2026-09-15 (session 6 — live Claude planning validation, Claude 
 | M5 `docs/CODEX_NEXT_TASK.md`         | Done                                                                               |
 | M6 Real Codex CLI adapter            | Done (stub-tested; not yet run against the real CLI)                               |
 | M7 Asynchronous planning             | Done (POST /api/requests returns 202 + draft; planning in background)              |
-| M8 Real Claude Code CLI adapter      | Done (stub-tested; no live run)                                                    |
-| M9 Git diff capture for review input | Done (temp-git-repo + fake-adapter tested; no live run)                            |
+| M8 Real Claude Code CLI adapter      | Done (live-validated for `plan` start in M10; review/resume still stub-only)       |
+| M9 Git diff capture for review input | Done (temp-git-repo + fake-adapter tested; no model involved)                      |
 | M10 Live Claude planning validation  | Done (2 approved live calls: 1 auth failure + 1 successful plan on claude 2.1.260) |
 
 ## Current state
 
 Complete vertical slice runs end-to-end against **fake adapters**: register project → request → plan → approve → fake implement → fake review (optional revision round, same Codex session) → completed / failed. State, runs, messages, timeline and usage persist in SQLite and survive browser refresh and server restart.
 
-Real CLI adapters exist for both roles: `CodexCliAdapter` behind `CODEX_ADAPTER=cli` and `ClaudeCliAdapter` behind `CLAUDE_ADAPTER=cli`. Both default to `fake`. Both have been verified only against Node stubs that replay JSONL fixtures — **no real Codex run and no real Claude model call has been executed yet**.
+Real CLI adapters exist for both roles: `CodexCliAdapter` behind `CODEX_ADAPTER=cli` and `ClaudeCliAdapter` behind `CLAUDE_ADAPTER=cli`. Both default to `fake`.
 
-Review prompts now carry a bounded, read-only git diff of the working tree (session 5); it is memory-only and never persisted.
+Verification status per path — this table is the authoritative summary; the per-session sections below are historical records of when each fact was established:
 
-Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on a throwaway repository. The first failed at the API step (the standalone CLI was logged out); after the user ran `claude auth login`, the second **produced a valid structured plan**. Both captures were sanitized into fixtures and the parser handled both without code changes to its invariants. Codex has still never been run live.
+| Path                              | Implemented | Stub/fixture tested                  | Live tested                         |
+| --------------------------------- | ----------- | ------------------------------------ | ----------------------------------- |
+| Claude `plan` start               | yes         | yes                                  | **yes** (claude 2.1.260, session 6) |
+| Claude `review`                   | yes         | yes                                  | no                                  |
+| Claude `--resume`                 | yes         | yes                                  | no                                  |
+| Codex `implement` start           | yes         | yes                                  | no                                  |
+| Codex `revise` / resume           | yes         | yes                                  | no                                  |
+| Git review context (bounded diff) | yes         | yes (temp git repos + fake adapters) | n/a (no model involved)             |
+| Orchestrator full loop            | yes         | yes (fake adapters)                  | no                                  |
+
+Review prompts carry a bounded, read-only git diff of the working tree (session 5); it is memory-only and never persisted.
+
+Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on a throwaway repository. The first failed at the API step (the standalone CLI was logged out); after the user ran `claude auth login`, the second **produced a valid structured plan** with real token usage. Both captures were sanitized into fixtures. **Codex has never been run live** — that is the next milestone (M11), specified in `docs/CODEX_NEXT_TASK.md`.
 
 ## Verification log
 
@@ -146,7 +158,7 @@ Sections: read-only reviewer role · review round · user request · approved pl
 
 - The snapshot is the **current working tree**, not proof of Codex authorship. Pre-existing local edits are mixed in; `changedFiles` only narrows the scope. The prompt says so.
 - Only common secret-looking basenames are excluded; this is not a secret scanner.
-- Verified with temporary git repositories and fake adapters only; no real Claude/Codex call was made.
+- Verified with temporary git repositories and fake adapters only (no model is involved in diff collection). The diff has not yet been exercised inside a live review prompt.
 
 ## Claude Code CLI adapter (session 4)
 
@@ -184,7 +196,7 @@ resume: same + --resume <sessionId>
 - The stream-json shapes (`system.init`, `assistant.message.content[]`, `result.structured_output`, `result.usage`) follow the documented format but were **not** confirmed against live 2.1.260 output. First real run: capture stdout as `tests/fixtures/claude/live-*.jsonl` and adjust the parser header table if names differ.
 - Whether `--json-schema` populates `structured_output` on this version, and whether `--permission-mode plan` + `--permission-prompts none` completes without prompting, is unverified.
 - `--max-turns` support is unknown on 2.1.260 (absent from help); a wrong flag would make the CLI exit → surfaces as `CLAUDE_EXITED_WITHOUT_RESULT`.
-- Review prompts now include a bounded git diff (session 5, M9); Claude permissions were not widened for it.
+- Review prompts include a bounded git diff (added afterwards in session 5, M9); Claude permissions were not widened for it.
 
 ## Asynchronous planning (session 3)
 
@@ -196,7 +208,7 @@ resume: same + --resume <sessionId>
 - HTTP: `POST /api/requests` → **202** `{ task: <draft> }`. Approve while `draft` → 409.
 - UI: submit selects the returned draft and shows "Claude is preparing a plan…"; Approve/Reject only in `awaiting_approval`; Cancel available in `draft`. `isStale`/`mergeTask` compare `updatedAt` so a late HTTP draft response cannot roll back an SSE `awaiting_approval` already applied.
 - Tests use `tests/helpers/gated-adapter.ts` (test-only) to park the planner at a gate — no timers.
-- Not verified: behaviour with a real, slow planner (no real Claude adapter yet); the Codex live run from session 2 is still outstanding.
+- Not verified at the time: behaviour with a real, slow planner. (Session 6 later ran one live planner call successfully — it took ~18 s, which is exactly why planning is asynchronous. The Codex live run is still outstanding.)
 
 ## Codex CLI adapter (session 2)
 
@@ -301,8 +313,18 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 - `recoverInterrupted` marks interrupted runs failed rather than attempting resume. Resume-on-restart can be added once real session ids exist.
 - `.claude/launch.json` runs `npm start` (built output). `npm run dev` runs tsx + Vite with a `/api` proxy; the Vite proxy does not forward SSE by default in all configs — verify when first using `dev` (not exercised this session).
 
+## Role handoff (end of the Claude-led bootstrap)
+
+M0–M10 were built and validated by Claude Code at the user's explicit request. That bootstrap phase is finished.
+
+- **Default implementer from here on: Codex.** The next execution document is `docs/CODEX_NEXT_TASK.md` (M11).
+- **Claude's runtime role stays planner / reviewer** (`plan` and `review` runs only, always `--permission-mode plan`).
+- During development Claude can still be asked by the user to plan, review, write documentation, or implement a specific piece — that needs an explicit request, exactly as M0–M10 did. Nothing here forbids it.
+- Real AI invocations (Claude or Codex) happen only inside a per-task approval the user granted, with the expected call count stated beforehand. There is no standing approval.
+- Unchanged guardrails: state transitions go through `src/domain/state-machine.ts`; child processes use `runProcess` (argv array, `shell: false`, canonical cwd, env allowlist); no commit/push unless the user asks.
+
 ## Next exact work
 
-1. **Minimal live Codex implement/resume test (user-supervised)** on a throwaway git repo: confirm the `exec` argv, the JSONL event names, resume sandbox/cwd behaviour, and usage. Sanitize into `tests/fixtures/codex/live-*.jsonl` and adjust the Codex parser if names differ.
-2. **Live Claude review run** (needs a real implementation to review): verify the review schema path and that the bounded diff fits the prompt.
+1. **M11 — user-supervised live Codex start/resume validation.** Full instructions in `docs/CODEX_NEXT_TASK.md`: a preflight that spends no tokens, then at most one `codex exec` start and — only if it succeeds — one `codex exec resume`, on a throwaway repository, behind an explicit user approval.
+2. **Live Claude review run** — needs a real implementation to review, so it follows M11. Verifies the review schema path and the bounded diff inside a real prompt.
 3. Then evaluate an explicitly gated emergency-repair path and/or packaging.

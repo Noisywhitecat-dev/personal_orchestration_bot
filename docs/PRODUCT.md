@@ -47,4 +47,4 @@ Per provider (claude / codex), per project / task / run / session: input, cached
 
 ## Explicit non-goals (current phase)
 
-Real CLI execution (bootstrap only), sandbox bypass, auto commit/push, GitHub API, multi-user auth, cloud, Docker, Electron/Tauri, plugin systems, other model providers, agent teams, parallel implementation, worktree automation, voice, mobile, cost conversion, quota lookup, auto-update, telemetry.
+Unattended CLI execution (every real run is user-approved), sandbox bypass, auto commit/push, GitHub API, multi-user auth, cloud, Docker, Electron/Tauri, plugin systems, other model providers, agent teams, parallel implementation, worktree automation, voice, mobile, cost conversion, quota lookup, auto-update, telemetry.
