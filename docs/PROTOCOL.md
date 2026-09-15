@@ -115,6 +115,12 @@ The pending-error rule uses only the provider's structured `item.type = "error"`
 
 The plan/review result is taken from `structured_output`, else from a `result` string that is JSON or a single ```json fence. It is validated with a zod schema for the run kind (the same shape is passed as `--json-schema`). Anything else — missing fields, wrong `kind`, empty `steps`, bad `verdict`, `request_changes` without requests, prose — fails the run with `AGENT_RESULT_INVALID`. No default plan and no automatic approval is ever synthesized. The adapter supports only `plan` and `review`; `implement`/`revise` fail with `UNSUPPORTED_KIND` without spawning.
 
+M12 live-validated the review start boundary on Claude Code 2.1.260. The real stream used
+`rate_limit_event → system/init → assistant(thinking) → assistant(StructuredOutput) → user(tool_result) → assistant(StructuredOutput) → user(tool_result) → rate_limit_event → result/success`.
+The intermediate empty thinking/tool blocks remain known-ignored; only the terminal
+`structured_output` becomes the schema-validated review result. The observed normalized order was
+`session_started → usage_reported → run_completed`, with exactly one usage event before one terminal.
+
 ## Usage
 
 ```ts
@@ -138,6 +144,9 @@ After a successful `implement` / `revise` run the orchestrator asks a `ReviewCon
 - Collection failures (not a git repo, git error, collector disabled) yield `unavailable`; the review still runs and the prompt says so. Truncation and omitted files (sensitive, binary, excluded dirs, outside root, symlink, too large) are stated explicitly.
 - If the task is cancelled while collecting, no review run is started and the task ends `cancelled`.
 - The snapshot describes the current working tree, not proven authorship; the implementer's `changedFiles` only narrow the scope.
+- M12 exercised this path against one real, scoped `calculator.js` diff. The prompt contained one
+  begin/end marker pair and the expected removed/added lines, while the read-only Claude review left
+  the working tree byte-identical.
 
 ## Review loop bound
 

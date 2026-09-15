@@ -128,6 +128,20 @@ describe('ClaudeCliAdapter (stub executable)', () => {
     ).toHaveLength(2);
   });
 
+  it('replays the sanitized M12 live review fixture through the production adapter path', async () => {
+    const events = await collect(
+      adapter(fixture('live-review-v2.1.260.jsonl')).start(input({ kind: 'review' })),
+    );
+    expect(types(events)).toEqual(['session_started', 'usage_reported', 'run_completed']);
+    expect(terminals(events)).toHaveLength(1);
+    const result = events.at(-1);
+    if (result?.type !== 'run_completed' || result.result.kind !== 'review') {
+      throw new Error('bad review terminal');
+    }
+    expect(result.result.verdict).toBe('request_changes');
+    expect(result.result.changeRequests[0]).toContain('addition');
+  });
+
   it('resume: re-announces the known id once, passes --resume, result parsed', async () => {
     const events = await collect(
       adapter(fixture('resume.jsonl')).resume(

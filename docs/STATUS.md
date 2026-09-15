@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-09-15 (session 9 — M11 live Codex runtime fix and completion, Codex)
+Last updated: 2026-09-16 (session 10 — M12 live Claude review validation, Codex)
 
 ## Completed milestones
 
@@ -12,12 +12,13 @@ Last updated: 2026-09-15 (session 9 — M11 live Codex runtime fix and completio
 | M3 SQLite + HTTP API + SSE             | Done                                                                                                   |
 | M4 Minimal React UI                    | Done (flow verified in browser)                                                                        |
 | M5 `docs/CODEX_NEXT_TASK.md`           | Done                                                                                                   |
-| M6 Real Codex CLI adapter              | Done (stub-tested; not yet run against the real CLI)                                                   |
+| M6 Real Codex CLI adapter              | Done (live start/resume validated in M11)                                                              |
 | M7 Asynchronous planning               | Done (POST /api/requests returns 202 + draft; planning in background)                                  |
-| M8 Real Claude Code CLI adapter        | Done (live-validated for `plan` start in M10; review/resume still stub-only)                           |
+| M8 Real Claude Code CLI adapter        | Done (live `plan` start in M10 and live `review` start in M12; resume still stub-only)                 |
 | M9 Git diff capture for review input   | Done (temp-git-repo + fake-adapter tested; no model involved)                                          |
 | M10 Live Claude planning validation    | Done (2 approved live calls: 1 auth failure + 1 successful plan on claude 2.1.260)                     |
 | M11 Live Codex start/resume validation | Done (runtime preflight added; successful start + exact-session resume on codex-cli 0.154.0-alpha.6.2) |
+| M12 Live Claude review validation      | Done (one bounded-diff review start returned schema-valid `request_changes` on Claude Code 2.1.260)    |
 
 ## Current state
 
@@ -30,22 +31,22 @@ Verification status per path — this table is the authoritative summary; the pe
 | Path                              | Implemented | Stub/fixture tested                  | Live tested                                                        |
 | --------------------------------- | ----------- | ------------------------------------ | ------------------------------------------------------------------ |
 | Claude `plan` start               | yes         | yes                                  | **yes** (claude 2.1.260, session 6)                                |
-| Claude `review`                   | yes         | yes                                  | no                                                                 |
+| Claude `review`                   | yes         | yes                                  | **yes** (bounded deliberate defect, session 10)                    |
 | Claude `--resume`                 | yes         | yes                                  | no                                                                 |
 | Codex `implement` start           | yes         | yes                                  | **yes** (codex-cli 0.154.0-alpha.6.2, session 9)                   |
 | Codex `revise` / resume           | yes         | yes                                  | **yes** (same session id, sandbox override + child cwd, session 9) |
-| Git review context (bounded diff) | yes         | yes (temp git repos + fake adapters) | n/a (no model involved)                                            |
+| Git review context (bounded diff) | yes         | yes (temp git repos + fake adapters) | **yes** (embedded in the live M12 review prompt)                   |
 | Orchestrator full loop            | yes         | yes (fake adapters)                  | no                                                                 |
 
 Review prompts carry a bounded, read-only git diff of the working tree (session 5); it is memory-only and never persisted.
 
-Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on a throwaway repository. M11 used two separately approved attempts: session 8 recorded one failed Codex start caused by an incomplete Desktop runtime path; session 9 selected the complete runtime and successfully ran one new start plus one exact-session resume. Codex start/resume are now live-validated; live Claude review and the full two-provider loop remain unverified.
+Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1.260) on a throwaway repository. M11 used two separately approved attempts: session 8 recorded one failed Codex start caused by an incomplete Desktop runtime path; session 9 selected the complete runtime and successfully ran one new start plus one exact-session resume. Session 10 (M12) made one approved Claude review start over a bounded deliberate defect and received `request_changes`. Codex start/resume and Claude plan/review starts are now live-validated; Claude resume and the full two-provider loop remain unverified.
 
 ## Verification log
 
 | Command                                                 | Result                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                              | 15 files, 197 tests passed (186 → 197 in M11: runtime preflight/path normalization plus failed and successful live-capture regressions)                                                                                                                                                                                       |
+| `npm test`                                              | 15 files, 200 tests passed (197 → 200 in M12: sanitized live review parser and adapter regressions)                                                                                                                                                                                                                           |
 | `npm run typecheck`                                     | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
 | `npm run lint`                                          | clean                                                                                                                                                                                                                                                                                                                         |
 | `npx prettier --check .`                                | clean                                                                                                                                                                                                                                                                                                                         |
@@ -101,10 +102,10 @@ Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on 
 - `tests/fixtures/claude/live-auth-error-v2.1.260.jsonl` (3 lines) and `tests/fixtures/claude/live-plan-v2.1.260.jsonl` (23 lines): field-whitelisted copies. Session ids → `sess-live-0001` / `sess-live-plan-0001`, uuids → fixed test uuids, tool inputs and tool results → `<redacted>`, cwd/paths/timings removed or replaced; field names, nesting, ordering and the usage numbers are real. 7 regression tests cover both.
 - `claude-jsonl-parser.ts` (3 small changes, invariants unchanged): `usage.output_tokens_details.thinking_tokens` → `reasoningTokens`; `terminal_reason` appended to the `CLAUDE_ERROR` message; `rate_limit_event` added to the known-ignored line types (it was being counted as unknown).
 
-### Still unverified
+### Still unverified at the end of M10
 
 - Resume (`--resume`), review runs, and the orchestrator's full implement → review loop against a live Claude.
-- A successful live Codex implementation and any live Codex resume run.
+- A successful live Codex implementation and any live Codex resume run. M11 later completed both.
 - Whether long runs hit the timeout, and how a real permission denial surfaces (`permission_denials` was empty here).
 - Side effect to keep in mind: each live planning run leaves a plan markdown file in `~/.claude/plans/`.
 
@@ -132,7 +133,42 @@ Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on 
 - Final throwaway Git status was exactly `?? hello.txt`; no file was staged or committed after the initial repository commit. README SHA-256 stayed `6529B2F843E72D6291F35C6ABA72E93BDDBC8626CD63046D32ED357CB14966AE`; sentinel stayed `752250F26CFF7977CA79B4BE20DA2E9D2A59B2E22FC8A8C0237CF37B963EC7CE`. Final `hello.txt` SHA-256 was `7A98F309829C7B144F5503DB55075632126D3CC4428A0E54555863929F7795E8`.
 - Raw captures `data/live-captures/codex-start-20260915-2245.raw.jsonl` and `data/live-captures/codex-resume-20260915-2245.raw.jsonl`, the harness, and its stub dry-run output are deleted by verified exact paths after final verification.
 - Final offline verification: `npm test` 15 files / 197 tests, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build` and `git diff --check` all pass.
-- Still unverified: live Claude review, the full orchestrator loop with both real CLIs, timeout behaviour on a long real run, a real permission denial, and whether the sandbox would block a deliberate out-of-root write (not attempted).
+- Still unverified at M11 completion: live Claude review (completed later in M12), the full orchestrator loop with both real CLIs, timeout behaviour on a long real run, a real permission denial, and whether the sandbox would block a deliberate out-of-root write (not attempted).
+
+## Live Claude review validation (session 10, M12 — done)
+
+### Preflight and invocation
+
+- The task authorized exactly one real Claude review start after all offline gates passed. M12 ran
+  **one Claude start, zero retries, zero Claude resumes, and zero Codex/other model calls**.
+- Current executable: `C:\Users\Study\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude-code\2.1.260\claude.exe`; `--version` returned `2.1.260 (Claude Code)`. `--help` still listed `--print`, `--output-format stream-json`, `--verbose`, `--permission-mode`, `--permission-prompts`, and `--json-schema`; `auth status` exited 0 and reported logged in. Account identifiers are not recorded here or in fixtures.
+- Production review argv after the executable was exactly `--print --output-format stream-json --verbose --permission-mode plan --permission-prompts none --json-schema <review schema>`. There was no `--max-turns`, resume, continue, or bypass option. The 2,013-byte prompt went only to stdin; child `cwd` was the canonical throwaway repository.
+- The first candidate throwaway (`C:\Users\Study\AppData\Local\Temp\orchestration-m12-review-20260915-235914\repo`) was owned by the offline sandbox account. The elevated real-run account therefore made Git reject it as dubious ownership. The harness stopped at review-context collection, before constructing the adapter or starting Claude, so this consumed no model call or tokens. No global `safe.directory` exception was added.
+- A fresh real-run-owned repository was created at `C:\Users\Study\AppData\Local\Temp\orchestration-m12-review-20260916-000412-study\repo`. Its committed `calculator.js` returned `a + b`; the sole working-tree change replaced that with `a - b`. `GitReviewContextCollector` scoped the 194-byte context to exactly `calculator.js`, untruncated with no omissions. In-memory checks found one begin/end marker pair and both expected diff lines, with no sentinel content. The same production collector/prompt/adapter/parser path passed a stub dry-run before the model call.
+
+### Live result and protocol
+
+- The one live start exited 0 after **18,305 ms** (harness wall time 18,306 ms), with **9 JSONL lines** and empty stderr. It returned session id `21dca74b-58c3-43a8-81a2-c588e0141bf2`; it was not resumed.
+- Raw event order: `rate_limit_event` → `system/init` → `assistant(thinking)` → `assistant(StructuredOutput)` → `user(tool_result)` → `assistant(StructuredOutput)` → `user(tool_result)` → `rate_limit_event` → `result/success`. The thinking string was empty. The first StructuredOutput attempt received an error tool result and the second succeeded; both are parser-known ignored events. There were no malformed or unknown lines.
+- The terminal carried `is_error: false`, `terminal_reason: "completed"`, `stop_reason: "tool_use"`, `num_turns: 3`, no permission denials, and a schema-valid `structured_output`. Normalized order was exactly `session_started` → `usage_reported` → `run_completed`, with one usage event before one terminal and no text/reasoning events.
+- Raw usage: input 4, cache creation 36,318, cache read 33,923, output 635, thinking 32. Mapped usage: input **70,245**, cached input **33,923**, output **635**, reasoning **32**, total **70,880**, source `actual`.
+- Verdict was `request_changes`. The review specifically identified `return a - b` as subtraction rather than the required addition, requested restoring `a + b`, and requested a non-symmetric-operand regression test. This satisfies the deliberate-defect acceptance check without a retry.
+
+### Safety, fixture and remaining gaps
+
+- The final throwaway state remained exactly ` M calculator.js`; HEAD stayed `b7c53deacbe34b34b34e8c7fceadfe86a2a62c43`. `calculator.js` stayed byte-identical at SHA-256 `75CFACB7FAAC086C50B23AC4B29A709EB8680999E6756F620CA76D42ABA07CAB`; parent `SENTINEL.txt` stayed `DC91B476279EE67C930FACBE3EA19D7BBF5A5FE9E09477B29FCBE959313D83F9`. No extra repository or parent file appeared, and no `~/.claude/plans/` file was created.
+- `tests/fixtures/claude/live-review-v2.1.260.jsonl` is a 9-line field-whitelisted capture. It replaces session/UUID/tool payloads, removes paths, account/machine data, prompt text and timings, and preserves event order, the sanitized review result, and real usage values. Three parser/adapter regressions cover event/terminal ordering, usage mapping, defect verdict, and fixture sanitization. Production adapter/parser code did not need to change.
+- The raw scan found the expected absolute Windows paths and real session identifier, but no prompt,
+  email, access/refresh token, authorization, bearer, password, or client-secret text. The sanitized
+  fixture contains none of those machine/session values.
+- Exact cleanup removed `data/live-captures/m12-stub.raw.jsonl`,
+  `data/live-captures/m12-stub-study.raw.jsonl`,
+  `data/live-captures/m12-claude-review-20260916-0006.raw.jsonl`,
+  `data/live-captures/m12-live-review-harness.mjs`, and
+  `data/live-captures/m12-tee-wrapper.mjs`. Final offline verification passed: `npm test` 15 files /
+  200 tests, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`, and
+  `git diff --check`.
+- Remaining live gaps: Claude resume; the full orchestrator plan → approve → implement → review loop with both providers; long-run timeout/cancellation; a real permission denial; and deliberate out-of-root sandbox rejection (not attempted).
 
 ## Review context / git diff capture (session 5)
 
@@ -235,7 +271,7 @@ resume: same + --resume <sessionId>
 - HTTP: `POST /api/requests` → **202** `{ task: <draft> }`. Approve while `draft` → 409.
 - UI: submit selects the returned draft and shows "Claude is preparing a plan…"; Approve/Reject only in `awaiting_approval`; Cancel available in `draft`. `isStale`/`mergeTask` compare `updatedAt` so a late HTTP draft response cannot roll back an SSE `awaiting_approval` already applied.
 - Tests use `tests/helpers/gated-adapter.ts` (test-only) to park the planner at a gate — no timers.
-- Not verified at the time: behaviour with a real, slow planner. (Session 6 later ran one live planner call successfully — it took ~18 s, which is exactly why planning is asynchronous. The Codex live run is still outstanding.)
+- Not verified at the time: behaviour with a real, slow planner. (Session 6 later ran one live planner call successfully — it took ~18 s, which is exactly why planning is asynchronous. M11 later completed the Codex live start/resume validation.)
 
 ## Codex CLI adapter (session 2)
 
@@ -346,7 +382,7 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 
 M0–M10 were built and validated by Claude Code at the user's explicit request. That bootstrap phase is finished.
 
-- **Default implementer from here on: Codex.** The next execution document is `docs/CODEX_NEXT_TASK.md` (M11).
+- **Default implementer from here on: Codex.** The current execution document is `docs/CODEX_NEXT_TASK.md` (M12).
 - **Claude's runtime role stays planner / reviewer** (`plan` and `review` runs only, always `--permission-mode plan`).
 - During development Claude can still be asked by the user to plan, review, write documentation, or implement a specific piece — that needs an explicit request, exactly as M0–M10 did. Nothing here forbids it.
 - Real AI invocations (Claude or Codex) happen only inside a per-task approval the user granted, with the expected call count stated beforehand. There is no standing approval.
@@ -354,6 +390,6 @@ M0–M10 were built and validated by Claude Code at the user's explicit request.
 
 ## Next exact work
 
-1. **M11 — user-supervised live Codex start/resume validation.** Full instructions in `docs/CODEX_NEXT_TASK.md`: a preflight that spends no tokens, then at most one `codex exec` start and — only if it succeeds — one `codex exec resume`, on a throwaway repository, behind an explicit user approval.
-2. **Live Claude review run** — needs a real implementation to review, so it follows M11. Verifies the review schema path and the bounded diff inside a real prompt.
+1. **Live end-to-end loop** — plan → approve → implement → bounded review → complete with both real CLIs under explicit per-call approval.
+2. Validate Claude resume and real cancellation/timeout/permission-denial behaviour only under a separately approved bounded task.
 3. Then evaluate an explicitly gated emergency-repair path and/or packaging.
