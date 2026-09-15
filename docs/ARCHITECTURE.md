@@ -34,7 +34,7 @@ Dependency direction: `web → shared ← server → application → domain ← 
 
 ## Process safety policy
 
-Implemented by `src/infrastructure/process/process-runner.ts` and used by every CLI adapter and by the git review-context collector. Validation scope as of M10: Claude `plan` start has been exercised against the real CLI; Claude review/resume and all Codex paths are stub-tested only (see `docs/STATUS.md`).
+Implemented by `src/infrastructure/process/process-runner.ts` and used by every CLI adapter and by the git review-context collector. Live validation now covers Claude plan start, Claude review start, Claude review resume with an exact stored session, Codex start/resume, and bounded review-context delivery. M13 plus M14 provide a cumulative Orchestrator/SQLite continuation across both providers; they do not prove that all three calls complete in one uninterrupted process (see `docs/STATUS.md`).
 
 - `spawn(file, args, { shell: false })`; never concatenate command strings.
 - Working directory resolved to canonical path and verified to be inside the registered project root.
@@ -47,6 +47,8 @@ Implemented by `src/infrastructure/process/process-runner.ts` and used by every 
 ## Review loop
 
 `Task.reviewRound` counts completed review cycles. `maxReviewRounds` (default 2) is a task-level setting. When a review requests changes and `reviewRound >= maxReviewRounds`, the orchestrator transitions to `failed` with code `REVIEW_ROUNDS_EXCEEDED` and emits a system message for the user.
+
+M14 validated a restart-style continuation without mutating the failed M13 database: a separate SQLite task replayed the already-observed plan and implementation with `unavailable` usage, then the normal Orchestrator path collected the live two-file context and called `ClaudeCliAdapter.resume` with the exact M13 plan session. The resulting approval followed `reviewing → approved → completed`; prompt and diff content were not persisted.
 
 ## Deviations from the suggested layout
 

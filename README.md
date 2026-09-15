@@ -11,7 +11,7 @@ A personal, local-first orchestration program that lets **Claude Code** and **Co
 
 ## Status
 
-Bootstrap phase. Real Claude / Codex CLI adapters are **not** wired yet; the full flow runs against deterministic fake adapters. See [docs/STATUS.md](docs/STATUS.md).
+The local-first vertical slice is implemented. Deterministic fake adapters remain the default, while the real Claude and Codex CLI adapters are opt-in and have been exercised on bounded throwaway repositories. See [docs/STATUS.md](docs/STATUS.md) for the distinction between individual live paths, the cumulative M13–M14 continuation, and a still-unverified single uninterrupted live run.
 
 ## Quick start
 
@@ -38,12 +38,14 @@ No API keys are read from `.env`.
 
 Validation scope so far:
 
-| Path                                | Status                                                                                                     |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Claude `plan` start                 | **live-validated** (claude 2.1.260): plan mode left the project untouched and returned a schema-valid plan |
-| Claude `review`, `--resume`         | implemented, stub-tested only                                                                              |
-| Codex start / resume                | implemented, stub-tested only — live validation is the next milestone (`docs/CODEX_NEXT_TASK.md`)          |
-| Full plan → implement → review loop | works end-to-end against the fake adapters; not yet run with both real CLIs                                |
+| Path                                | Status                                                                                                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude `plan` start                 | **live-validated** on Claude Code 2.1.260                                                                                                              |
+| Claude `review` start               | **live-validated** with a bounded diff in M12                                                                                                          |
+| Claude `review --resume`            | **live-validated** in M14 with the exact stored M13 plan session                                                                                       |
+| Codex start / resume                | **live-validated** on codex-cli 0.154.0-alpha.6.2; an incomplete explicitly selected Windows runtime fails before invocation                           |
+| Bounded review diff                 | **live-validated** in M12 and through the M14 continuation; prompt/diff remain memory-only                                                             |
+| Full plan → implement → review loop | deterministic fake loop is complete; M13 plan+implement and M14 review form a cumulative live continuation, not one uninterrupted three-call execution |
 
 Each live Claude planning run also writes its own plan document under `~/.claude/plans/`.
 
@@ -53,16 +55,16 @@ After every Codex implement/revise run the server collects a **read-only, bounde
 
 ## Documents
 
-| File                                               | Purpose                                           |
-| -------------------------------------------------- | ------------------------------------------------- |
-| [docs/PRODUCT.md](docs/PRODUCT.md)                 | What the product is and is not                    |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)       | Layers, directories, key design decisions         |
-| [docs/PROTOCOL.md](docs/PROTOCOL.md)               | Task state machine, agent events, usage model     |
-| [docs/ROADMAP.md](docs/ROADMAP.md)                 | Milestones                                        |
-| [docs/STATUS.md](docs/STATUS.md)                   | Current progress, verification log, known issues  |
-| [docs/CODEX_NEXT_TASK.md](docs/CODEX_NEXT_TASK.md) | Next task spec for Codex (real Codex CLI adapter) |
-| [AGENTS.md](AGENTS.md)                             | Rules for Codex when working in this repo         |
-| [CLAUDE.md](CLAUDE.md)                             | Rules for Claude Code when working in this repo   |
+| File                                               | Purpose                                          |
+| -------------------------------------------------- | ------------------------------------------------ |
+| [docs/PRODUCT.md](docs/PRODUCT.md)                 | What the product is and is not                   |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)       | Layers, directories, key design decisions        |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md)               | Task state machine, agent events, usage model    |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                 | Milestones                                       |
+| [docs/STATUS.md](docs/STATUS.md)                   | Current progress, verification log, known issues |
+| [docs/CODEX_NEXT_TASK.md](docs/CODEX_NEXT_TASK.md) | Current bounded validation task                  |
+| [AGENTS.md](AGENTS.md)                             | Rules for Codex when working in this repo        |
+| [CLAUDE.md](CLAUDE.md)                             | Rules for Claude Code when working in this repo  |
 
 ## Non-goals (for now)
 
