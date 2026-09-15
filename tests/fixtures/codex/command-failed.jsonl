@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread-fail-1"}
+{"type":"item.started","item":{"id":"c1","type":"command_execution","command":"npm test","cwd":"/proj"}}
+{"type":"item.completed","item":{"id":"c1","type":"command_execution","command":"npm test","exit_code":1,"aggregated_output":"FAIL src/x.test.ts\n1 failed","stderr":"Error: expected 1 to be 2"}}
+{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"Tests are failing; I could not resolve it."}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}

@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"thread-abc-123"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"r1","type":"reasoning","text":"Looking at the request."}}
+{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"I will add the button and a test."}}
+{"type":"item.started","item":{"id":"c1","type":"command_execution","command":["npm","test"],"cwd":"/proj"}}
+{"type":"item.completed","item":{"id":"c1","type":"command_execution","command":["npm","test"],"exit_code":0,"aggregated_output":"Tests: 4 passed"}}
+{"type":"item.completed","item":{"id":"f1","type":"file_change","changes":[{"path":"src/header.tsx","kind":"update"},{"path":"src/header.test.tsx","kind":"add"}]}}
+{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"Added the logout button and a test; npm test passes."}}
+{"type":"turn.completed","usage":{"input_tokens":1200,"cached_input_tokens":400,"output_tokens":350,"reasoning_output_tokens":120,"total_tokens":1550}}
