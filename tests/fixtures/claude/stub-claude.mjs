@@ -5,9 +5,9 @@
 //   STUB_EXIT_CODE    exit code after streaming (default 0)
 //   STUB_STDERR       text written to stderr
 //   STUB_HANG_MS      keep the process alive this long after streaming (timeout/abort tests)
-//   STUB_ECHO         if set, write one JSON line to stderr: { argv, cwd, stdinBytes }
+//   STUB_ECHO_FILE    if set, write JSON { argv, cwd, stdinBytes } to this file
 //   STUB_REQUIRE_ARG  exit 64 unless this exact argv token is present
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
 
@@ -16,9 +16,10 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => (stdin += c));
 await new Promise((r) => process.stdin.on('end', r));
 
-if (process.env.STUB_ECHO) {
-  process.stderr.write(
-    JSON.stringify({ argv, cwd: process.cwd(), stdinBytes: Buffer.byteLength(stdin) }) + '\n',
+if (process.env.STUB_ECHO_FILE) {
+  writeFileSync(
+    process.env.STUB_ECHO_FILE,
+    JSON.stringify({ argv, cwd: process.cwd(), stdinBytes: Buffer.byteLength(stdin) }),
   );
 }
 if (process.env.STUB_REQUIRE_ARG && !argv.includes(process.env.STUB_REQUIRE_ARG)) {
