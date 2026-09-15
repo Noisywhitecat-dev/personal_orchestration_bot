@@ -36,7 +36,7 @@ Dependency direction: `web → shared ← server → application → domain ← 
 
 ## Process safety policy
 
-Implemented by `src/infrastructure/process/process-runner.ts` and used by every CLI adapter and by the git review-context collector. Live validation covers individual Claude start/resume, Codex start/resume, cancellation, timeout, bounded review context, a non-temporary out-of-root denial, and an uninterrupted three-call plan/implement/review completion. That final run exposed persisted command stdout containing a diff; migration v3 and the application/public boundaries now remove command content. Fresh post-fix live evidence remains (see `docs/STATUS.md`).
+Implemented by `src/infrastructure/process/process-runner.ts` and used by every CLI adapter and by the git review-context collector. Live validation covers individual Claude start/resume, Codex start/resume, cancellation, timeout, bounded review context, a non-temporary out-of-root denial, and an uninterrupted three-call plan/implement/review completion. An initial run exposed persisted command stdout containing a diff; migration v3 and the application/public boundaries now remove command content. A fresh post-fix run completed with three child exit codes of 0 and clean logical/physical DB scans (see `docs/STATUS.md`).
 
 - `spawn(file, args, { shell: false })`; never concatenate command strings.
 - Working directory resolved to canonical path and verified to be inside the registered project root.

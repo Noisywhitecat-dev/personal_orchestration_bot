@@ -4,12 +4,13 @@ Last updated: 2026-09-16 (M15 final local MVP implementation and bounded accepta
 
 ## M15 authoritative status
 
-M15 is **98% complete for release acceptance, not 100%**. The defined product functionality is
-implemented, migrated, automated-tested, and browser-tested. Cancellation, timeout, a valid
-non-temporary out-of-root Codex attempt, and one uninterrupted flat-schema
-`plan -> implement -> review -> completed` run were live-validated. That run exposed command stdout
-containing a diff in persistent timeline data. Migration v3 and new-event/public-boundary redaction
-fix it, but a fresh post-fix live run with explicit provider child exit codes remains required.
+M15 and the personal local MVP are **100% complete for the defined acceptance scope**. The product
+functionality is implemented, migrated, automated-tested, and browser-tested. Cancellation,
+timeout, a valid non-temporary out-of-root Codex attempt, and an uninterrupted flat-schema
+`plan -> implement -> review -> completed` run are live-validated. After that run exposed persisted
+command stdout, migration v3 and new-event/public-boundary redaction fixed it. A fresh post-fix v3
+run then completed with all three provider child exit codes captured and clean logical/physical DB
+scans before any repair.
 
 ### Implemented
 
@@ -44,13 +45,14 @@ reload.
 
 ### M15 live acceptance
 
-The token-free preflight passed immediately before the last attempt: Claude Code 2.1.260 was logged
+The token-free preflight passed immediately before the final attempt: Claude Code 2.1.260 was logged
 in with all required flags, and codex-cli 0.154.0-alpha.6.2 came from a complete Windows Desktop
 runtime containing all three required helpers. No private executable path or auth data was stored.
 
-The original M15 authorization used 6 of 8 calls. After the user granted a new exact three-call
-budget, all three were used once with no retry. Total M15 calls are therefore **9 across two explicit
-authorizations**.
+The original M15 authorization used 6 of 8 calls. Two later exact three-call authorizations were
+each used once with no model retry. Total M15 calls are therefore **12 across three explicit
+authorizations**. A preflight command initially stopped on an empty-output PowerShell predicate and
+consumed no call; the corrected preflight then allowed the final three calls.
 
 | Call | Provider / scenario                              | Result                                                                                                                                             |
 | ---- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -63,11 +65,14 @@ authorizations**.
 | 7    | Claude flat-schema planning start                | Completed in 17,098 ms; plan session present; actual usage 106,688                                                                                 |
 | 8    | Codex implementation start                       | Completed in 26,765 ms; created only `greet.js` and `greet.test.js`; tests passed; actual usage 79,401                                             |
 | 9    | Claude exact-session review resume               | Completed in 16,961 ms; resume session matched call 7; approved round 1; actual usage 77,612                                                       |
+| 10   | Claude fresh-v3 planning start                   | Child exit 0 in 24,053 ms; flat plan completed; actual usage 144,058                                                                               |
+| 11   | Codex fresh-v3 implementation start              | Child exit 0 in 26,419 ms; created only `greet.js` and `greet.test.js`; actual usage 79,823                                                        |
+| 12   | Claude fresh-v3 exact-session review resume      | Child exit 0 in 11,245 ms; exact call-10 session resumed; approved round 1; actual usage 39,082                                                    |
 
-Actual M15 usage totals: Claude input `182,387`, cached input `107,335`, output `1,913`, reasoning
-`441`, total `184,300` (plus two zero-usage API failures and two `unavailable` records); Codex input
-`174,982`, cached input `137,600`, output `1,559`, reasoning `386`, total `176,541`. Combined actual
-total is `360,841`. Fake replay estimates are excluded. No raw provider capture is retained.
+Actual M15 usage totals: Claude input `363,935`, cached input `257,203`, output `3,505`, reasoning
+`778`, total `367,440` (plus two zero-usage API failures and two `unavailable` records); Codex input
+`254,088`, cached input `208,128`, output `2,276`, reasoning `485`, total `256,364`. Combined actual
+total is `623,804`. Fake/stub values are excluded. No raw provider capture is retained.
 
 Calls 7–9 used the production Orchestrator, SQLite repositories, adapters, parsers, process runner,
 and review-context collector in one process. Normalized sequences were:
@@ -89,13 +94,27 @@ Codex command's stdout had been persisted as timeline content. Migration v3 was 
 live DB; task `completed`, 3 runs, and 29 events remained, while logical tail/diff counts became zero.
 After secure-delete/VACUUM, the DB, WAL, and SHM byte scans also contained no tail keys or diff
 marker. New events now persist only exit/presence metadata, with public DTO redaction as a second
-shield. This behavior is fully tested offline but was not observed in a fresh post-fix model run.
+shield. Calls 10–12 below provide the fresh post-fix observation that calls 7–9 lacked.
 
-The safe observer retained each call's duration, normalized event sequence, usage, and terminal
-result, but a timing/parse defect left the provider child process records empty. The outer harness
-exited 1 because this postcondition and the newly discovered persistence condition failed; no child
-exit code is inferred from that aggregate exit. The remaining live acceptance must retain all three
-exit codes and prove a newly created v3 DB is clean without post-run repair.
+Calls 10–12 repeated the same production path against a new clean throwaway after the v3 fix. Before
+the model run, a stub dry-run proved that the observer waits for the OS `close` event and records all
+three child results. The live normalized sequences were:
+
+- plan: `session_started -> message_delta -> usage_reported -> run_completed`;
+- implement: `session_started -> message_delta -> command_started -> command_completed ->
+message_delta -> command_started -> command_started -> command_completed -> command_completed ->
+message_delta -> usage_reported -> run_completed`;
+- review: `session_started -> usage_reported -> run_completed`.
+
+All three child outcomes were `exited` with exit code 0. The task reached `completed`, review round 1
+was `approve`, and the exact planning session was resumed. The fresh database was version 3 from
+creation, reopened identically, and had three metadata-only `command_completed` events. Logical
+checks found zero tail keys, diff markers, review-context markers, raw provider events, or session
+leaks into timeline payloads. After ordinary close—without migration repair or VACUUM—the 90,112-byte
+DB physical scan found none of the forbidden strings; no WAL/SHM remained. Independent `node --test`
+passed. Git contained only the two expected untracked files, while HEAD, committed fixture files,
+outside sentinel, and product repository remained unchanged. The preserved throwaway leaf is
+`orchestration-m15-v3-final-01a0a538`.
 
 ## Completed milestones
 
@@ -116,7 +135,7 @@ exit codes and prove a newly created v3 DB is clean without post-run repair.
 | M12 Live Claude review validation       | Done (one bounded-diff review start returned schema-valid `request_changes` on Claude Code 2.1.260)    |
 | M13 Live two-provider orchestrator loop | Partial (real plan and implement ran; review was correctly blocked by a newly observed parser gap)     |
 | M14 Exact-session review continuation   | Done (one real Claude resume approved the M13 two-file implementation; continuation task completed)    |
-| M15 Final local MVP                     | 98% — uninterrupted real flow completed; fresh v3 persistence/child-exit evidence still required       |
+| M15 Final local MVP                     | Done — fresh v3 uninterrupted flow, child exits, persistence, browser, and full offline gates passed   |
 
 ## Current state
 
@@ -524,15 +543,15 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 - The web `App.tsx` is a single component; no routing, no design system — intentional for MVP.
 - `recoverInterrupted` marks interrupted runs failed rather than attempting resume. Resume-on-restart can be added once real session ids exist.
 - `.claude/launch.json` runs `npm start` (built output). `npm run dev` runs tsx + Vite with a `/api` proxy; the Vite proxy does not forward SSE by default in all configs — verify when first using `dev` (not exercised this session).
-- The flat Claude plan/clarification schema completed a real planning start and uninterrupted loop.
-  The remaining mandatory gate is fresh v3 storage plus captured child exit codes for all three
-  provider processes.
+- The flat Claude plan/clarification schema and fresh v3 persistence completed an uninterrupted real
+  loop with all three provider child exit codes captured.
 
 ## Role handoff (end of the Claude-led bootstrap)
 
 M0–M10 were built and validated by Claude Code at the user's explicit request. That bootstrap phase is finished.
 
-- **Default implementer from here on: Codex.** The current execution document is `docs/CODEX_NEXT_TASK.md` (M14).
+- **Default implementer from here on: Codex.** `docs/CODEX_NEXT_TASK.md` records the completed MVP
+  handoff and requires a newly scoped task for further work.
 - **Claude's runtime role stays planner / reviewer** (`plan` and `review` runs only, always `--permission-mode plan`).
 - During development Claude can still be asked by the user to plan, review, write documentation, or implement a specific piece — that needs an explicit request, exactly as M0–M10 did. Nothing here forbids it.
 - Real AI invocations (Claude or Codex) happen only inside a per-task approval the user granted, with the expected call count stated beforehand. There is no standing approval.
@@ -540,9 +559,6 @@ M0–M10 were built and validated by Claude Code at the user's explicit request.
 
 ## Next exact work
 
-Under a new explicit allowance of three real calls, repeat the uninterrupted flat-schema plan →
-approve → implement → exact-session review → complete acceptance described in
-`docs/CODEX_NEXT_TASK.md`, retaining child exit codes and proving a fresh v3 DB has no command tails
-or diff markers. Cancellation, timeout, and valid out-of-root permission behavior do not need
-repetition. Packaging, emergency repair, cloud, and other providers remain optional post-MVP
-candidates.
+There is no required MVP work remaining. Start a new bounded task before pursuing packaging,
+emergency repair, cloud, multi-user authentication, mobile/voice, or additional providers. Any new
+real AI CLI validation requires its own explicit call count and a throwaway target.

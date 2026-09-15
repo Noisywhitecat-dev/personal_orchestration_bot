@@ -20,19 +20,18 @@ M0–M10 are complete. The default implementer from here on is **Codex**; Claude
 
 ### Validation milestones
 
-| Milestone | Scope                                                                                              | Status                                                                                                                                                                                                                                                                                                       |
-| --------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| M11       | User-supervised live Codex start + resume validation (throwaway repo, sanitized fixtures)          | Done — incomplete explicit Windows runtime fails fast; complete Desktop runtime verified with successful start and exact-session resume on codex-cli 0.154.0-alpha.6.2                                                                                                                                       |
-| M12       | User-supervised live Claude review validation with a bounded deliberate defect                     | Done — one review start on Claude Code 2.1.260 returned schema-valid `request_changes`; workspace and sentinel remained unchanged                                                                                                                                                                            |
-| M13       | Real Orchestrator + SQLite loop across Claude plan, Codex implement and Claude resume              | Partial — live plan and implement succeeded, but a PowerShell-wrapped test command left `testsPassed=null`; guard blocked review, parser fixed offline, no retry                                                                                                                                             |
-| M14       | Resume the M13 Claude plan session through a replay-backed continuation task                       | Done — one real review resume approved the bounded two-file diff and the separate M14 task completed; no plan/Codex call was repeated                                                                                                                                                                        |
-| M15       | Final local MVP: clarification, execution budgets, runtime status, completed UI, safety acceptance | **98%** — code/browser/offline paths pass and a flat-schema uninterrupted real flow completed with exact-session review approval. The run exposed command-tail persistence, fixed by migration v3 and offline/public-boundary tests. A fresh post-fix three-call run with captured child exit codes remains. |
+| Milestone | Scope                                                                                              | Status                                                                                                                                                                                                                            |
+| --------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M11       | User-supervised live Codex start + resume validation (throwaway repo, sanitized fixtures)          | Done — incomplete explicit Windows runtime fails fast; complete Desktop runtime verified with successful start and exact-session resume on codex-cli 0.154.0-alpha.6.2                                                            |
+| M12       | User-supervised live Claude review validation with a bounded deliberate defect                     | Done — one review start on Claude Code 2.1.260 returned schema-valid `request_changes`; workspace and sentinel remained unchanged                                                                                                 |
+| M13       | Real Orchestrator + SQLite loop across Claude plan, Codex implement and Claude resume              | Partial — live plan and implement succeeded, but a PowerShell-wrapped test command left `testsPassed=null`; guard blocked review, parser fixed offline, no retry                                                                  |
+| M14       | Resume the M13 Claude plan session through a replay-backed continuation task                       | Done — one real review resume approved the bounded two-file diff and the separate M14 task completed; no plan/Codex call was repeated                                                                                             |
+| M15       | Final local MVP: clarification, execution budgets, runtime status, completed UI, safety acceptance | **Done** — code/browser/offline paths pass. A fresh v3 real three-call flow completed with exact-session review approval, three child exit codes of 0, DB reopen equality, and no persisted/physical command tail or diff marker. |
 
-### Required before declaring 100%
+### Local MVP completion
 
-- Under a new explicit budget of three calls, repeat the uninterrupted flat-schema flow using the
-  v3 build. Record each provider child exit code and prove the newly created DB never contains
-  stdout/stderr tails or diff markers before any migration repair.
+M0–M15 are complete. Further work requires a newly scoped post-MVP task and, when it involves a real
+AI CLI, a separate explicit call budget.
 
 ### Optional post-MVP candidates
 
