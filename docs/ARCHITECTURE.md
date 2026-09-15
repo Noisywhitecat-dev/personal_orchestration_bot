@@ -32,7 +32,7 @@ Dependency direction: `web → shared ← server → application → domain ← 
 | Errors           | `OrchestrationError` with `code` + user message                         | Do not collapse errors into one string                        |
 | Usage            | Raw `UsageRecord` rows + computed aggregates                            | Keep original events; never fake unknowns as 0                |
 
-## Process safety policy (for real adapters, not yet implemented)
+## Process safety policy (implemented by `src/infrastructure/process/process-runner.ts` and the CLI adapters; stub-tested — see `docs/STATUS.md` for the live-tested scope)
 
 - `spawn(file, args, { shell: false })`; never concatenate command strings.
 - Working directory resolved to canonical path and verified to be inside the registered project root.

@@ -12,3 +12,5 @@ data/*.db-shm
 .DS_Store
 Thumbs.db
 .vite/
+# raw live CLI captures (may contain session ids / paths); sanitized fixtures live in tests/fixtures
+data/live-captures/
