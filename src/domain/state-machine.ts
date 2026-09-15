@@ -7,7 +7,8 @@ import type { Task, TaskState } from './task.js';
  * Anything not listed here is rejected with INVALID_TRANSITION.
  */
 export const TRANSITIONS: Readonly<Record<TaskState, readonly TaskState[]>> = {
-  draft: ['awaiting_approval', 'failed', 'cancelled'],
+  draft: ['awaiting_clarification', 'awaiting_approval', 'failed', 'cancelled'],
+  awaiting_clarification: ['draft', 'cancelled'],
   awaiting_approval: ['queued', 'cancelled'],
   queued: ['implementing', 'cancelled'],
   implementing: ['review_requested', 'failed', 'cancelled'],

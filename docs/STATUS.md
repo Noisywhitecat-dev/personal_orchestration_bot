@@ -1,6 +1,74 @@
 # STATUS
 
-Last updated: 2026-09-16 (session 12 — M14 exact-session review continuation, Codex)
+Last updated: 2026-09-16 (M15 final local MVP implementation and bounded acceptance)
+
+## M15 authoritative status
+
+M15 is **95% complete for release acceptance, not 100%**. The defined product functionality is
+implemented, migrated, automated-tested, and browser-tested. Cancellation, timeout, and a valid
+non-temporary out-of-root Codex attempt were live-validated. The one remaining required gate is a
+new uninterrupted real `plan -> implement -> review -> completed` run after the final Claude
+planning-schema compatibility fix.
+
+### Implemented
+
+- Claude planning can return a strict `clarification` result; questions and answers persist as chat
+  messages and each answer resumes the exact stored Claude session. Multiple rounds, cancellation,
+  duplicate-answer rejection, round limits, and restart interruption are covered.
+- Tasks persist maximum Claude/Codex runs, nullable run-boundary token ceilings, clarification
+  rounds, and review rounds. One centralized guard blocks before run insertion/provider entry and
+  records `budget_blocked`, a terminal failure code, and a user action message.
+- The UI covers project selection, chat, clarification, plan approval/rejection, all limits,
+  maximum follow-up calls, current execution/review state, cancellation, task/project usage source,
+  confidence-aware token remainder, failure action, runtime status, SSE reload, and narrow screens.
+- `GET /api/runtime-status` is read-only/token-free. Public REST/SSE DTOs omit session identifiers;
+  runtime paths, prompts, diffs, environment values, and credentials are not returned.
+- SQLite migration v2 adds the M15 task fields with defaults and preserves existing v1 rows.
+- Claude's planning JSON Schema is a flat top-level object. Claude Code 2.1.260 rejects both a root
+  without `type` and root-level `oneOf`/`allOf`/`anyOf`; strict branch validation remains in zod.
+- Codex implementation/revision prompts repeat the registered-project-only write boundary. An
+  explicitly selected incomplete Windows Desktop runtime still fails before provider invocation.
+
+### Browser acceptance
+
+With fake adapters, one browser flow registered a project, requested one clarification, displayed
+and answered it, survived a server restart/reload, displayed and approved the resulting plan and
+limits, completed implement/review, and showed usage confidence. Separate tasks verified
+clarification cancellation and `CLAUDE_RUN_LIMIT_EXCEEDED` with a next-action message. At 480 x 720,
+the controls remained available in a single-column layout. Browser console warnings/errors were
+empty, and the SSE reconnect race found during the run was fixed with a stable connection plus REST
+reload.
+
+### M15 live acceptance
+
+The token-free preflight passed immediately before the last attempt: Claude Code 2.1.260 was logged
+in with all required flags, and codex-cli 0.154.0-alpha.6.2 came from a complete Windows Desktop
+runtime containing all three required helpers. No private executable path or auth data was stored.
+
+Exactly **6 of the authorized 8** calls were used; two remain unused because they cannot complete the
+required three-call uninterrupted path and failed starts may not be retried.
+
+| Call | Provider / scenario                              | Result                                                                                                                                             |
+| ---- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Claude happy-path planning start                 | Failed before plan: provider required a top-level schema `type`; actual usage 0                                                                    |
+| 2    | Claude cancellation                              | Cancelled through production `AbortSignal`; usage unavailable; one terminal, no follow-up                                                          |
+| 3    | Claude timeout                                   | Failed `TIMEOUT`; usage unavailable; one terminal, no follow-up                                                                                    |
+| 4    | Codex permission probe using a `%TEMP%` sibling  | Provider completed and created the file; invalid denial evidence because temp is a writable sandbox exception. The exact created file was deleted. |
+| 5    | Claude corrected happy-path planning start       | Failed before plan: provider forbids top-level schema composition; actual usage 0                                                                  |
+| 6    | Codex permission probe outside temporary storage | Provider completed without creating the requested outside file; outside sentinel/repository/product state unchanged                                |
+
+Actual M15 usage totals: Claude `0` (two zero-usage API failures; two other Claude records are
+`unavailable`), Codex input `96,322`, cached input `67,584`, output `818`, reasoning `268`, total
+`97,140`. Fake replay estimates are excluded. No raw provider capture is retained.
+
+The final flat-schema fix and regression test were made after call 5. A new live attempt was not
+made: calls 7–8 are insufficient for a three-call run, and using either as a retry would violate the
+task's non-transient retry rule. The preserved M15 throwaways are identified by the non-sensitive
+leaf names `orchestration-m15-live-TOeuEv` and `orchestration-m15-live-JCH6kH`.
+
+The safe observer retained each call's duration, normalized event sequence, usage, and terminal
+result, but not the child process's OS exit code; both outer harness runs exited 0. No child exit code
+is inferred from that wrapper result. The remaining live acceptance must retain this field explicitly.
 
 ## Completed milestones
 
@@ -21,10 +89,11 @@ Last updated: 2026-09-16 (session 12 — M14 exact-session review continuation, 
 | M12 Live Claude review validation       | Done (one bounded-diff review start returned schema-valid `request_changes` on Claude Code 2.1.260)    |
 | M13 Live two-provider orchestrator loop | Partial (real plan and implement ran; review was correctly blocked by a newly observed parser gap)     |
 | M14 Exact-session review continuation   | Done (one real Claude resume approved the M13 two-file implementation; continuation task completed)    |
+| M15 Final local MVP                     | 95% — feature/offline/browser complete; one uninterrupted three-call live acceptance still required    |
 
 ## Current state
 
-Complete vertical slice runs end-to-end against **fake adapters**: register project → request → plan → approve → fake implement → fake review (optional revision round, same Codex session) → completed / failed. State, runs, messages, timeline and usage persist in SQLite and survive browser refresh and server restart.
+Complete vertical slice runs end-to-end against **fake adapters**: register project → clarification(s) → plan → approve → fake implement → fake review (optional revision round, same Codex session) → completed / failed. State, limits, runs, messages, timeline and usage persist in SQLite and survive browser refresh and server restart. The M15 section above supersedes older current-state wording while the remaining sections preserve milestone history.
 
 Real CLI adapters exist for both roles: `CodexCliAdapter` behind `CODEX_ADAPTER=cli` and `ClaudeCliAdapter` behind `CLAUDE_ADAPTER=cli`. Both default to `fake`.
 
@@ -48,7 +117,7 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 
 | Command                                                 | Result                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                              | 15 files, 202 tests passed (200 → 202 in M13: Windows PowerShell-wrapped Codex test-command parser and adapter regressions)                                                                                                                                                                                                   |
+| `npm test`                                              | 18 files, 225 tests passed (M15 adds clarification, budgets, migration/recovery, public redaction, runtime status, SSE ordering, and UI-state regressions)                                                                                                                                                                    |
 | `npm run typecheck`                                     | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
 | `npm run lint`                                          | clean                                                                                                                                                                                                                                                                                                                         |
 | `npx prettier --check .`                                | clean                                                                                                                                                                                                                                                                                                                         |
@@ -428,6 +497,8 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 - The web `App.tsx` is a single component; no routing, no design system — intentional for MVP.
 - `recoverInterrupted` marks interrupted runs failed rather than attempting resume. Resume-on-restart can be added once real session ids exist.
 - `.claude/launch.json` runs `npm start` (built output). `npm run dev` runs tsx + Vite with a `/api` proxy; the Vite proxy does not forward SSE by default in all configs — verify when first using `dev` (not exercised this session).
+- The flat Claude plan/clarification schema is fully tested offline but has not yet completed one
+  real planning start. This is the only remaining mandatory M15 acceptance gate.
 
 ## Role handoff (end of the Claude-led bootstrap)
 
@@ -441,6 +512,8 @@ M0–M10 were built and validated by Claude Code at the user's explicit request.
 
 ## Next exact work
 
-1. If still valuable, validate one uninterrupted live plan → approve → implement → exact-session review → complete run under a new explicit call budget. M13+M14 already establish this path cumulatively.
-2. Validate real cancellation/timeout/permission-denial behaviour only under a separately approved bounded task.
-3. Then evaluate an explicitly gated emergency-repair path and/or packaging.
+Under a new explicit allowance of at least three real calls, run the one uninterrupted flat-schema
+plan → approve → implement → exact-session review → complete acceptance described in
+`docs/CODEX_NEXT_TASK.md`. Cancellation, timeout, and valid out-of-root permission behavior no longer
+need repetition. Packaging, emergency repair, cloud, and other providers remain optional post-MVP
+candidates.

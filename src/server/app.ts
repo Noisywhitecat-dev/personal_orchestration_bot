@@ -7,11 +7,13 @@ import { OrchestrationError } from '../domain/errors.js';
 import { asProjectId, asTaskId } from '../domain/ids.js';
 import { handleApi, HttpError } from './routes/api.js';
 import { attachSse } from './events/sse.js';
+import type { RuntimeStatusResponse } from '../shared/contracts.js';
 
 export interface AppOptions {
   orchestrator: Orchestrator;
   /** Directory of the built web UI (dist/web). Optional in dev, where Vite serves it. */
   staticDir?: string;
+  runtimeStatus?: RuntimeStatusResponse;
 }
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -28,6 +30,22 @@ const MIME: Record<string, string> = {
 /** Builds the HTTP server without listening, so tests can drive it. */
 export function createApp(opts: AppOptions): Server {
   const { orchestrator, staticDir } = opts;
+  const runtimeStatus =
+    opts.runtimeStatus ??
+    ({
+      claude: { adapter: 'fake', executable: 'not_required', timeoutMs: 600_000 },
+      codex: { adapter: 'fake', executable: 'not_required', timeoutMs: 900_000 },
+      reviewDiffMaxBytes: 65_536,
+      database: 'memory',
+      defaultExecutionLimits: {
+        maxClaudeRuns: 6,
+        maxCodexRuns: 3,
+        claudeTokenCeiling: null,
+        codexTokenCeiling: null,
+        maxClarificationRounds: 3,
+        maxReviewRounds: 2,
+      },
+    } satisfies RuntimeStatusResponse);
 
   return createServer((req, res) => {
     void handle(req, res).catch((err: unknown) => {
@@ -56,6 +74,7 @@ export function createApp(opts: AppOptions): Server {
           path: url.pathname,
           body,
           orchestrator,
+          runtimeStatus,
           ids: { asProjectId, asTaskId },
         });
         sendJson(res, result.status, result.body);

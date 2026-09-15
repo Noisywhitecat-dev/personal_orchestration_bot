@@ -7,11 +7,16 @@ import type { Orchestrator } from '../../application/orchestrator.js';
 import { OrchestrationError } from '../../domain/errors.js';
 import type { ProjectId, TaskId } from '../../domain/ids.js';
 import {
+  ClarificationAnswerBody,
   RegisterProjectBody,
   RejectTaskBody,
   SubmitRequestBody,
   type ProjectDetailResponse,
+  type RuntimeStatusResponse,
   type TaskDetailResponse,
+  toPublicRun,
+  toPublicTask,
+  toPublicTaskEvent,
 } from '../../shared/contracts.js';
 
 export class HttpError extends Error {
@@ -30,6 +35,7 @@ export interface ApiRequest {
   path: string;
   body: unknown;
   orchestrator: Orchestrator;
+  runtimeStatus: RuntimeStatusResponse;
   ids: { asProjectId: (s: string) => ProjectId; asTaskId: (s: string) => TaskId };
 }
 
@@ -79,8 +85,12 @@ export function canonicalProjectRoot(input: string): string {
  *   GET  /api/events                      (SSE, handled in app.ts)
  */
 export async function handleApi(req: ApiRequest): Promise<ApiResult> {
-  const { method, path, body, orchestrator, ids } = req;
+  const { method, path, body, orchestrator, ids, runtimeStatus } = req;
   const seg = path.split('/').filter(Boolean); // ['api', ...]
+
+  if (seg[1] === 'runtime-status' && seg.length === 2 && method === 'GET') {
+    return { status: 200, body: runtimeStatus };
+  }
 
   if (seg[1] === 'projects') {
     if (seg.length === 2 && method === 'GET') {
@@ -97,7 +107,7 @@ export async function handleApi(req: ApiRequest): Promise<ApiResult> {
       if (!project) throw new OrchestrationError('PROJECT_NOT_FOUND', 'Project not found.');
       const res: ProjectDetailResponse = {
         project,
-        tasks: orchestrator.listTasks(id),
+        tasks: orchestrator.listTasks(id).map(toPublicTask),
         messages: orchestrator.listMessages(id),
         usage: orchestrator.projectUsage(id),
       };
@@ -107,32 +117,50 @@ export async function handleApi(req: ApiRequest): Promise<ApiResult> {
 
   if (seg[1] === 'requests' && seg.length === 2 && method === 'POST') {
     const input = parse(SubmitRequestBody, body);
-    const task = await orchestrator.submitRequest(ids.asProjectId(input.projectId), input.request);
+    const task = await orchestrator.submitRequest(
+      ids.asProjectId(input.projectId),
+      input.request,
+      input.executionLimits,
+    );
     // Planning runs in the background; the client follows progress over SSE.
-    return { status: 202, body: { task } };
+    return { status: 202, body: { task: toPublicTask(task) } };
   }
 
   if (seg[1] === 'tasks' && seg[2]) {
     const id = ids.asTaskId(seg[2]);
     if (seg.length === 3 && method === 'GET') {
       const res: TaskDetailResponse = {
-        task: orchestrator.getTask(id),
-        runs: orchestrator.listRuns(id),
-        timeline: orchestrator.listTimeline(id),
+        task: toPublicTask(orchestrator.getTask(id)),
+        runs: orchestrator.listRuns(id).map(toPublicRun),
+        timeline: orchestrator.listTimeline(id).map(toPublicTaskEvent),
         usage: orchestrator.taskUsage(id),
+        budget: orchestrator.budgetStatus(id),
       };
       return { status: 200, body: res };
     }
     if (seg.length === 4 && method === 'POST') {
       switch (seg[3]) {
         case 'approve':
-          return { status: 200, body: { task: orchestrator.approve(id) } };
+          return { status: 200, body: { task: toPublicTask(orchestrator.approve(id)) } };
+        case 'clarify': {
+          const input = parse(ClarificationAnswerBody, body);
+          return {
+            status: 202,
+            body: { task: toPublicTask(orchestrator.answerClarification(id, input.answer)) },
+          };
+        }
         case 'reject': {
           const input = parse(RejectTaskBody, body);
-          return { status: 200, body: { task: orchestrator.reject(id, input.reason) } };
+          return {
+            status: 200,
+            body: { task: toPublicTask(orchestrator.reject(id, input.reason)) },
+          };
         }
         case 'cancel':
-          return { status: 200, body: { task: await orchestrator.cancel(id) } };
+          return {
+            status: 200,
+            body: { task: toPublicTask(await orchestrator.cancel(id)) },
+          };
       }
     }
   }

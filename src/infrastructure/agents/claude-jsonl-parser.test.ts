@@ -248,6 +248,11 @@ describe('ClaudeJsonlParser: structured results', () => {
       validateResult('implement', { kind: 'plan', title: 't', summary: 's', steps: ['a'] }),
     ).toBeNull();
     expect(validateResult('plan', 'not an object')).toBeNull();
+    expect(validateResult('plan', { kind: 'clarification', question: 'Which database?' })).toEqual({
+      kind: 'clarification',
+      question: 'Which database?',
+    });
+    expect(validateResult('plan', { kind: 'clarification', question: ' ' })).toBeNull();
     expect(
       validateResult('review', {
         kind: 'review',
@@ -268,11 +273,14 @@ describe('ClaudeJsonlParser: structured results', () => {
   });
 
   it('JSON Schemas agree with the zod schemas on required fields and kinds', () => {
-    expect(PLAN_JSON_SCHEMA.required).toEqual(['kind', 'title', 'summary', 'steps']);
+    expect(PLAN_JSON_SCHEMA.type).toBe('object');
+    expect(PLAN_JSON_SCHEMA.required).toEqual(['kind']);
+    expect(PLAN_JSON_SCHEMA.properties.kind.enum).toEqual(['plan', 'clarification']);
     expect(REVIEW_JSON_SCHEMA.required).toEqual(['kind', 'verdict', 'summary', 'changeRequests']);
     expect(JSON.parse(jsonSchemaFor('plan'))).toEqual(PLAN_JSON_SCHEMA);
     expect(JSON.parse(jsonSchemaFor('review'))).toEqual(REVIEW_JSON_SCHEMA);
     expect(PLAN_JSON_SCHEMA.properties.steps.minItems).toBe(1);
+    expect(jsonSchemaFor('plan')).not.toMatch(/"(?:oneOf|allOf|anyOf)"/);
     expect(REVIEW_JSON_SCHEMA.properties.verdict.enum).toEqual(['approve', 'request_changes']);
   });
 });

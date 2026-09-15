@@ -55,6 +55,18 @@ export const PlanResultSchema = z
   })
   .strict();
 
+export const ClarificationResultSchema = z
+  .object({
+    kind: z.literal('clarification'),
+    question: nonEmpty,
+  })
+  .strict();
+
+export const PlanningResultSchema = z.discriminatedUnion('kind', [
+  PlanResultSchema,
+  ClarificationResultSchema,
+]);
+
 export const ReviewResultSchema = z
   .object({
     kind: z.literal('review'),
@@ -71,12 +83,26 @@ export const ReviewResultSchema = z
 export const PLAN_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['kind', 'title', 'summary', 'steps'],
+  required: ['kind'],
   properties: {
-    kind: { type: 'string', enum: ['plan'] },
-    title: { type: 'string', minLength: 1 },
-    summary: { type: 'string', minLength: 1 },
-    steps: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } },
+    kind: {
+      type: 'string',
+      enum: ['plan', 'clarification'],
+      description: 'Select plan when the request is actionable, otherwise clarification.',
+    },
+    title: { type: 'string', minLength: 1, description: 'Required when kind is plan.' },
+    summary: { type: 'string', minLength: 1, description: 'Required when kind is plan.' },
+    steps: {
+      type: 'array',
+      minItems: 1,
+      items: { type: 'string', minLength: 1 },
+      description: 'Required when kind is plan.',
+    },
+    question: {
+      type: 'string',
+      minLength: 1,
+      description: 'Required when kind is clarification.',
+    },
   },
 } as const;
 
@@ -99,7 +125,7 @@ export function jsonSchemaFor(kind: 'plan' | 'review'): string {
 /** Validate a candidate result for the run kind. Returns null when invalid. */
 export function validateResult(kind: RunKind, candidate: unknown): AgentResult | null {
   if (kind === 'plan') {
-    const r = PlanResultSchema.safeParse(candidate);
+    const r = PlanningResultSchema.safeParse(candidate);
     return r.success ? r.data : null;
   }
   if (kind === 'review') {

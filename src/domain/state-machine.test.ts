@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { OrchestrationError } from './errors.js';
+import {
+  DEFAULT_MAX_CLARIFICATION_ROUNDS,
+  DEFAULT_MAX_CLAUDE_RUNS,
+  DEFAULT_MAX_CODEX_RUNS,
+} from './execution-limits.js';
 import { asProjectId, asTaskId } from './ids.js';
 import {
   TRANSITIONS,
@@ -24,8 +29,14 @@ function makeTask(state: TaskState, overrides: Partial<Task> = {}): Task {
     request: 'add a button',
     state,
     plan: null,
+    clarificationRound: 0,
+    maxClarificationRounds: DEFAULT_MAX_CLARIFICATION_ROUNDS,
     reviewRound: 0,
     maxReviewRounds: DEFAULT_MAX_REVIEW_ROUNDS,
+    maxClaudeRuns: DEFAULT_MAX_CLAUDE_RUNS,
+    maxCodexRuns: DEFAULT_MAX_CODEX_RUNS,
+    claudeTokenCeiling: null,
+    codexTokenCeiling: null,
     reviews: [],
     codexSessionId: null,
     claudeSessionId: null,
@@ -83,6 +94,14 @@ describe('happy path', () => {
     task = transition(task, 'implementing', 'x');
     task = transition(task, 'review_requested', 'x');
     expect(task.state).toBe('review_requested');
+  });
+
+  it('supports clarification cycles before approval', () => {
+    let task = makeTask('draft');
+    task = transition(task, 'awaiting_clarification', 'x');
+    task = transition(task, 'draft', 'x');
+    task = transition(task, 'awaiting_approval', 'x');
+    expect(task.state).toBe('awaiting_approval');
   });
 
   it('does not mutate the input task', () => {

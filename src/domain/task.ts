@@ -2,6 +2,7 @@ import type { IsoTimestamp, ProjectId, SessionId, TaskId } from './ids.js';
 
 export const TASK_STATES = [
   'draft',
+  'awaiting_clarification',
   'awaiting_approval',
   'queued',
   'implementing',
@@ -51,9 +52,17 @@ export interface Task {
   request: string;
   state: TaskState;
   plan: TaskPlan | null;
+  /** Number of clarification questions returned by Claude. */
+  clarificationRound: number;
+  maxClarificationRounds: number;
   /** Number of completed review rounds. */
   reviewRound: number;
   maxReviewRounds: number;
+  maxClaudeRuns: number;
+  maxCodexRuns: number;
+  /** Run-boundary ceilings. null means unlimited; a single run may cross the ceiling. */
+  claudeTokenCeiling: number | null;
+  codexTokenCeiling: number | null;
   reviews: ReviewOutcome[];
   /** Implementer session, reused across revision rounds. */
   codexSessionId: SessionId | null;

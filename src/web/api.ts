@@ -3,8 +3,10 @@ import type {
   Project,
   ProjectDetailResponse,
   RegisterProjectBody,
+  RuntimeStatusResponse,
   Task,
   TaskDetailResponse,
+  ExecutionLimitsInput,
 } from '../shared/contracts.js';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -30,8 +32,19 @@ export const api = {
   projectDetail: (id: string) => request<ProjectDetailResponse>(`/api/projects/${id}`),
   submitRequest: (projectId: string, text: string) =>
     post<{ task: Task }>('/api/requests', { projectId, request: text }).then((r) => r.task),
+  submitRequestWithLimits: (
+    projectId: string,
+    text: string,
+    executionLimits: ExecutionLimitsInput,
+  ) =>
+    post<{ task: Task }>('/api/requests', { projectId, request: text, executionLimits }).then(
+      (r) => r.task,
+    ),
   taskDetail: (id: string) => request<TaskDetailResponse>(`/api/tasks/${id}`),
+  runtimeStatus: () => request<RuntimeStatusResponse>('/api/runtime-status'),
   approve: (id: string) => post<{ task: Task }>(`/api/tasks/${id}/approve`).then((r) => r.task),
+  clarify: (id: string, answer: string) =>
+    post<{ task: Task }>(`/api/tasks/${id}/clarify`, { answer }).then((r) => r.task),
   reject: (id: string, reason?: string) =>
     post<{ task: Task }>(`/api/tasks/${id}/reject`, { reason }).then((r) => r.task),
   cancel: (id: string) => post<{ task: Task }>(`/api/tasks/${id}/cancel`).then((r) => r.task),

@@ -12,7 +12,13 @@ import { FakeClaudeAdapter } from '../../src/infrastructure/agents/fake-claude-a
 import { FakeCodexAdapter } from '../../src/infrastructure/agents/fake-codex-adapter.js';
 import { createInMemoryRepositories } from '../../src/infrastructure/persistence/in-memory-repositories.js';
 import { createApp } from '../../src/server/app.js';
-import type { ProjectDetailResponse, TaskDetailResponse } from '../../src/shared/contracts.js';
+import { toPublicTaskEvent } from '../../src/shared/contracts.js';
+import type {
+  ProjectDetailResponse,
+  RuntimeStatusResponse,
+  TaskEvent,
+  TaskDetailResponse,
+} from '../../src/shared/contracts.js';
 import { GatedAdapter } from '../helpers/gated-adapter.js';
 
 let server: Server;
@@ -60,6 +66,31 @@ async function get<T>(path: string): Promise<{ status: number; body: T }> {
 }
 
 describe('HTTP API', () => {
+  it('redacts a legacy timeline session id at the public boundary', () => {
+    const legacy = {
+      id: 'event',
+      taskId: 'task',
+      runId: 'run',
+      type: 'session_started',
+      payload: { sessionId: 'must-not-leak' },
+      createdAt: '2026-09-16T00:00:00.000Z',
+    } as unknown as TaskEvent;
+    expect(toPublicTaskEvent(legacy).payload).toEqual({ sessionPresent: true });
+  });
+
+  it('reports token-free runtime status without private paths or secrets', async () => {
+    const status = await get<RuntimeStatusResponse>('/api/runtime-status');
+    expect(status.status).toBe(200);
+    expect(status.body).toMatchObject({
+      claude: { adapter: 'fake', executable: 'not_required' },
+      codex: { adapter: 'fake', executable: 'not_required' },
+      database: 'memory',
+    });
+    const serialized = JSON.stringify(status.body);
+    expect(serialized).not.toContain(projectDir);
+    expect(serialized).not.toMatch(/session|token.{0,10}(key|secret)|authorization/i);
+  });
+
   it('validates project registration', async () => {
     const bad = await post<{ error: { code: string } }>('/api/projects', {
       name: '',
@@ -111,6 +142,14 @@ describe('HTTP API', () => {
     const submitted = await post<{ task: Task }>('/api/requests', {
       projectId,
       request: 'Add a button',
+      executionLimits: {
+        maxClaudeRuns: 6,
+        maxCodexRuns: 3,
+        claudeTokenCeiling: null,
+        codexTokenCeiling: null,
+        maxClarificationRounds: 3,
+        maxReviewRounds: 2,
+      },
     });
     expect(submitted.status).toBe(202);
     expect(submitted.body.task.state).toBe('draft');
@@ -146,6 +185,11 @@ describe('HTTP API', () => {
     expect(detail.body.runs).toHaveLength(3);
     expect(detail.body.usage.codex.totalTokens).toBe(1300);
     expect(detail.body.usage.claude.hasEstimated).toBe(true);
+    expect(detail.body.budget.claude.usedRuns).toBe(2);
+    expect(JSON.stringify(detail.body)).not.toMatch(/SessionId|sessionId/);
+    expect(detail.body.timeline.find((event) => event.type === 'session_started')?.payload).toEqual(
+      { sessionPresent: true },
+    );
 
     const proj = await get<ProjectDetailResponse>(`/api/projects/${projectId}`);
     expect(proj.body.tasks).toHaveLength(1);
@@ -164,6 +208,7 @@ describe('HTTP API', () => {
     expect(types).toContain('timeline_appended');
     expect(types).toContain('usage_updated');
     expect(types).toContain('message_added');
+    expect(types).toContain('budget_updated');
     const states = [...sseText.matchAll(/^data: (.*)$/gm)]
       .map((m) => JSON.parse(m[1] ?? '{}') as { type: string; task?: Task })
       .filter((e) => e.type === 'task_updated')
@@ -172,6 +217,82 @@ describe('HTTP API', () => {
     expect(states).toContain('awaiting_approval');
     expect(states.indexOf('draft')).toBeLessThan(states.indexOf('awaiting_approval'));
     expect(states.at(-1)).toBe('completed');
+  });
+
+  it('validates execution limits and resumes clarification through the API', async () => {
+    const controller = new AbortController();
+    const sseRes = await fetch(`${base}/api/events`, { signal: controller.signal });
+    const reader = sseRes.body?.getReader();
+    if (!reader) throw new Error('no SSE body');
+    let sseText = '';
+    const pump = (async () => {
+      const decoder = new TextDecoder();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        sseText += decoder.decode(value, { stream: true });
+      }
+    })().catch(() => undefined);
+
+    const created = await post<{ project: { id: string } }>('/api/projects', {
+      name: 'clarify-demo',
+      rootPath: projectDir,
+    });
+    const invalid = await post<{ error: { code: string } }>('/api/requests', {
+      projectId: created.body.project.id,
+      request: 'x',
+      executionLimits: {
+        maxClaudeRuns: 0,
+        maxCodexRuns: 3,
+        claudeTokenCeiling: null,
+        codexTokenCeiling: null,
+        maxClarificationRounds: 3,
+        maxReviewRounds: 2,
+      },
+    });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error.code).toBe('VALIDATION_FAILED');
+
+    const submitted = await post<{ task: Task }>('/api/requests', {
+      projectId: created.body.project.id,
+      request: 'Need one detail [fake-clarify:1]',
+    });
+    await claude.waitForPending();
+    claude.release();
+    await orchestrator.whenSettled(submitted.body.task.id);
+    const waiting = await get<TaskDetailResponse>(`/api/tasks/${submitted.body.task.id}`);
+    expect(waiting.body.task.state).toBe('awaiting_clarification');
+
+    const answered = await post<{ task: Task }>(`/api/tasks/${submitted.body.task.id}/clarify`, {
+      answer: 'Use node:test.',
+    });
+    expect(answered.status).toBe(202);
+    const duplicate = await post<{ error: { code: string } }>(
+      `/api/tasks/${submitted.body.task.id}/clarify`,
+      { answer: 'duplicate' },
+    );
+    expect(duplicate.status).toBe(409);
+    await claude.waitForPending();
+    claude.release();
+    await orchestrator.whenSettled(submitted.body.task.id);
+    const planned = await get<TaskDetailResponse>(`/api/tasks/${submitted.body.task.id}`);
+    expect(planned.body.task.state).toBe('awaiting_approval');
+    expect(planned.body.task.hasClaudeSession).toBe(true);
+    expect(planned.body.runs.every((run) => !('sessionId' in run))).toBe(true);
+    expect(planned.body.timeline.map((event) => event.type)).toEqual(
+      expect.arrayContaining(['clarification_requested', 'clarification_answered']),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort();
+    await pump;
+    const taskStates = [...sseText.matchAll(/^data: (.*)$/gm)]
+      .map((match) => JSON.parse(match[1] ?? '{}') as { type: string; task?: Task })
+      .filter((event) => event.type === 'task_updated' && event.task?.id === submitted.body.task.id)
+      .map((event) => event.task?.state)
+      .filter((state, index, states) => index === 0 || state !== states[index - 1]);
+    expect(taskStates).toEqual(['draft', 'awaiting_clarification', 'draft', 'awaiting_approval']);
+    expect(sseText).not.toMatch(/SessionId|sessionId/);
   });
 
   it('cancel during planning over HTTP → cancelled', async () => {

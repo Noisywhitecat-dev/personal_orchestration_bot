@@ -1,9 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Orchestrator } from '../application/orchestrator.js';
+import {
+  DEFAULT_MAX_CLARIFICATION_ROUNDS,
+  DEFAULT_MAX_CLAUDE_RUNS,
+  DEFAULT_MAX_CODEX_RUNS,
+  type ExecutionLimitsInput,
+} from '../domain/execution-limits.js';
 import { systemClock } from '../domain/ports.js';
 import type { AgentAdapter } from '../infrastructure/agents/agent-adapter.js';
 import {
@@ -17,6 +23,7 @@ import { GitReviewContextCollector } from '../infrastructure/git/git-review-cont
 import { openDatabase } from '../infrastructure/persistence/database.js';
 import { createSqliteRepositories } from '../infrastructure/persistence/sqlite-repositories.js';
 import { createApp } from './app.js';
+import type { ExecutableStatus, RuntimeStatusResponse } from '../shared/contracts.js';
 
 // Entry point. Wires SQLite + adapters. Both adapters default to fake:
 //   CLAUDE_ADAPTER=fake|cli   (cli = local Claude Code CLI, read-only permission-mode plan)
@@ -24,7 +31,6 @@ import { createApp } from './app.js';
 
 const port = Number(process.env['PORT'] ?? 3080);
 const dbPath = resolve(process.env['DATABASE_PATH'] ?? './data/orchestration.db');
-const maxReviewRounds = Number(process.env['MAX_REVIEW_ROUNDS'] ?? 2);
 
 const ids = { next: () => randomUUID() };
 
@@ -38,9 +44,44 @@ function positiveIntEnv(name: string, fallback: number | undefined): number | un
   return n;
 }
 
-function selectClaudeAdapter(): { adapter: AgentAdapter; label: string } {
+function nullablePositiveIntEnv(name: string): number | null {
+  return positiveIntEnv(name, undefined) ?? null;
+}
+
+const defaultExecutionLimits: ExecutionLimitsInput = {
+  maxClaudeRuns: positiveIntEnv('MAX_CLAUDE_RUNS', DEFAULT_MAX_CLAUDE_RUNS) as number,
+  maxCodexRuns: positiveIntEnv('MAX_CODEX_RUNS', DEFAULT_MAX_CODEX_RUNS) as number,
+  claudeTokenCeiling: nullablePositiveIntEnv('CLAUDE_TOKEN_CEILING'),
+  codexTokenCeiling: nullablePositiveIntEnv('CODEX_TOKEN_CEILING'),
+  maxClarificationRounds: positiveIntEnv(
+    'MAX_CLARIFICATION_ROUNDS',
+    DEFAULT_MAX_CLARIFICATION_ROUNDS,
+  ) as number,
+  maxReviewRounds: positiveIntEnv('MAX_REVIEW_ROUNDS', 2) as number,
+};
+
+function executableStatus(mode: 'fake' | 'cli', executable: string): ExecutableStatus {
+  if (mode === 'fake') return 'not_required';
+  if (!isAbsolute(executable)) return 'configured';
+  return existsSync(executable) ? 'ready' : 'not_ready';
+}
+
+function selectClaudeAdapter(): {
+  adapter: AgentAdapter;
+  label: string;
+  mode: 'fake' | 'cli';
+  timeoutMs: number;
+  executable: ExecutableStatus;
+} {
   const mode = process.env['CLAUDE_ADAPTER'] ?? 'fake';
-  if (mode === 'fake') return { adapter: new FakeClaudeAdapter(systemClock, ids), label: 'fake' };
+  if (mode === 'fake')
+    return {
+      adapter: new FakeClaudeAdapter(systemClock, ids),
+      label: 'fake',
+      mode,
+      timeoutMs: 600_000,
+      executable: 'not_required',
+    };
   if (mode === 'cli') {
     const executable = process.env['CLAUDE_EXECUTABLE'] ?? 'claude';
     const timeoutMs = positiveIntEnv('CLAUDE_TIMEOUT_MS', 10 * 60 * 1000) as number;
@@ -54,17 +95,34 @@ function selectClaudeAdapter(): { adapter: AgentAdapter; label: string } {
       log: (line) => console.log(line),
     });
     const turns = maxTurns !== undefined ? `, max-turns=${maxTurns}` : '';
+    const executableLabel = isAbsolute(executable) ? basename(executable) : 'PATH lookup';
     return {
       adapter,
-      label: `cli (${executable}, permission-mode=${CLAUDE_PERMISSION_MODE} read-only, timeout=${timeoutMs}ms${turns})`,
+      label: `cli (${executableLabel}, permission-mode=${CLAUDE_PERMISSION_MODE} read-only, timeout=${timeoutMs}ms${turns})`,
+      mode,
+      timeoutMs,
+      executable: executableStatus(mode, executable),
     };
   }
   throw new Error(`Invalid CLAUDE_ADAPTER="${mode}". Expected "fake" or "cli".`);
 }
 
-function selectCodexAdapter(): { adapter: AgentAdapter; label: string } {
+function selectCodexAdapter(): {
+  adapter: AgentAdapter;
+  label: string;
+  mode: 'fake' | 'cli';
+  timeoutMs: number;
+  executable: ExecutableStatus;
+} {
   const mode = process.env['CODEX_ADAPTER'] ?? 'fake';
-  if (mode === 'fake') return { adapter: new FakeCodexAdapter(systemClock, ids), label: 'fake' };
+  if (mode === 'fake')
+    return {
+      adapter: new FakeCodexAdapter(systemClock, ids),
+      label: 'fake',
+      mode,
+      timeoutMs: 900_000,
+      executable: 'not_required',
+    };
   if (mode === 'cli') {
     const executable = process.env['CODEX_EXECUTABLE'] ?? 'codex';
     const timeoutMs = Number(process.env['CODEX_TIMEOUT_MS'] ?? 15 * 60 * 1000);
@@ -79,9 +137,13 @@ function selectCodexAdapter(): { adapter: AgentAdapter; label: string } {
       skipGitRepoCheck,
       log: (line) => console.log(line),
     });
+    const executableLabel = isAbsolute(executable) ? basename(executable) : 'PATH lookup';
     return {
       adapter,
-      label: `cli (${executable}, sandbox=workspace-write, timeout=${timeoutMs}ms)`,
+      label: `cli (${executableLabel}, sandbox=workspace-write, timeout=${timeoutMs}ms)`,
+      mode,
+      timeoutMs,
+      executable: executableStatus(mode, executable),
     };
   }
   throw new Error(`Invalid CODEX_ADAPTER="${mode}". Expected "fake" or "cli".`);
@@ -102,7 +164,7 @@ const orchestrator = new Orchestrator({
   claude: claude.adapter,
   codex: codex.adapter,
   repos: createSqliteRepositories(db),
-  maxReviewRounds,
+  defaultExecutionLimits,
   reviewContext,
 });
 
@@ -117,7 +179,23 @@ const here = dirname(fileURLToPath(import.meta.url));
 const candidates = [resolve(here, '../web'), resolve(here, '../../dist/web')];
 const staticDir = candidates.find((d) => existsSync(resolve(d, 'index.html')));
 
-const server = createApp({ orchestrator, ...(staticDir ? { staticDir } : {}) });
+const runtimeStatus: RuntimeStatusResponse = {
+  claude: {
+    adapter: claude.mode,
+    executable: claude.executable,
+    timeoutMs: claude.timeoutMs,
+  },
+  codex: { adapter: codex.mode, executable: codex.executable, timeoutMs: codex.timeoutMs },
+  reviewDiffMaxBytes,
+  database: basename(dbPath),
+  defaultExecutionLimits,
+};
+
+const server = createApp({
+  orchestrator,
+  runtimeStatus,
+  ...(staticDir ? { staticDir } : {}),
+});
 server.listen(port, () => {
   console.log(`[server] listening on http://localhost:${port} (db: ${dbPath})`);
   console.log(`[server] adapters: claude=${claude.label} codex=${codex.label}`);

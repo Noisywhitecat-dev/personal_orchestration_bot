@@ -4,6 +4,7 @@ import type { UsageSnapshot } from './usage.js';
 /** Structured outputs an agent run can produce. Adapters must parse provider output into one of these. */
 export type AgentResult =
   | { kind: 'plan'; title: string; summary: string; steps: string[] }
+  | { kind: 'clarification'; question: string }
   | {
       kind: 'implementation';
       summary: string;
