@@ -1,18 +1,19 @@
 # STATUS
 
-Last updated: 2026-09-15 (session 2 — real Codex CLI adapter, Claude Code)
+Last updated: 2026-09-15 (session 3 — asynchronous planning, Claude Code)
 
 ## Completed milestones
 
-| Milestone                       | Status                                               |
-| ------------------------------- | ---------------------------------------------------- |
-| M0 Repo contract                | Done                                                 |
-| M1 Domain + state machine       | Done                                                 |
-| M2 Fake adapters + orchestrator | Done                                                 |
-| M3 SQLite + HTTP API + SSE      | Done                                                 |
-| M4 Minimal React UI             | Done (flow verified in browser)                      |
-| M5 `docs/CODEX_NEXT_TASK.md`    | Done                                                 |
-| M6 Real Codex CLI adapter       | Done (stub-tested; not yet run against the real CLI) |
+| Milestone                       | Status                                                                |
+| ------------------------------- | --------------------------------------------------------------------- |
+| M0 Repo contract                | Done                                                                  |
+| M1 Domain + state machine       | Done                                                                  |
+| M2 Fake adapters + orchestrator | Done                                                                  |
+| M3 SQLite + HTTP API + SSE      | Done                                                                  |
+| M4 Minimal React UI             | Done (flow verified in browser)                                       |
+| M5 `docs/CODEX_NEXT_TASK.md`    | Done                                                                  |
+| M6 Real Codex CLI adapter       | Done (stub-tested; not yet run against the real CLI)                  |
+| M7 Asynchronous planning        | Done (POST /api/requests returns 202 + draft; planning in background) |
 
 ## Current state
 
@@ -24,7 +25,7 @@ A real **Codex CLI adapter** now exists (`CodexCliAdapter`) behind `CODEX_ADAPTE
 
 | Command                                    | Result                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                 | 9 files, 85 tests passed (+ process runner 15, JSONL parser 11, argv/forbidden 6, adapter integration 17)                                                                                                                                                                                                                     |
+| `npm test`                                 | 10 files, 96 tests passed (85 → 96: +9 async-planning, +1 api cancel-during-planning, +1 persistence draft recovery)                                                                                                                                                                                                          |
 | `npm run typecheck`                        | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
 | `npm run lint`                             | clean                                                                                                                                                                                                                                                                                                                         |
 | `npx prettier --check .`                   | clean                                                                                                                                                                                                                                                                                                                         |
@@ -36,13 +37,25 @@ A real **Codex CLI adapter** now exists (`CodexCliAdapter`) behind `CODEX_ADAPTE
 
 - **State machine** (`src/domain/state-machine.ts`): `TRANSITIONS` table + `assertTransition`. `awaiting_approval → queued` additionally requires `userApproved: true` (`APPROVAL_REQUIRED` otherwise). `resolveReviewVerdict` enforces `maxReviewRounds` → `failed` with `REVIEW_ROUNDS_EXCEEDED`.
 - **Orchestrator** never writes `task.state` directly; only via `transition()`. Pipeline runs in the background after `approve()`; tests use `whenSettled(taskId)`.
-- **Recovery on startup** (`recoverInterrupted`): `queued` tasks restart; `implementing`/`reviewing` tasks and their running runs are marked `failed` with `INTERRUPTED`. `awaiting_approval` is left as-is.
+- **Recovery on startup** (`recoverInterrupted`): `queued` tasks restart; `draft` / `implementing` / `reviewing` tasks and their running runs are marked `failed` with `INTERRUPTED`. `draft` is **not** re-planned automatically (would spend tokens unasked). `awaiting_approval` is left as-is. Tasks with a live in-process pipeline are skipped.
 - **Usage**: raw `usage_records` rows; aggregates computed on read (`summarizeUsage`) with `hasEstimated` / `hasUnavailable` flags. Unknown = `null`.
 - **Timeline bounding**: `message_delta` coalesced into one `agent_message` entry per run (≤ 8 KB); `reasoning_delta` not persisted; command tails ≤ 2 KB.
 - **Persistence**: `node:sqlite` (`DatabaseSync`) — no native build, sync API, WAL. Version-based migrations via `PRAGMA user_version`. Repositories are synchronous by design.
 - **Vite 6 / Vitest 3** instead of Vite 5 / Vitest 2: Vite 5's builtin list does not know `node:sqlite`, so tests failed to resolve it. Upgrading was cleaner than a resolver workaround.
 - **Fake adapters** are deterministic. FakeClaude: plan usage `actual`, review usage `estimated`; `[fake-changes:N]` in the request forces N change-request rounds. FakeCodex: `[fake-fail]` forces `run_failed`.
 - **Project root** validation (absolute + `realpath` + must exist) happens in `src/server/routes/api.ts`, keeping `application/` free of `fs`.
+
+## Asynchronous planning (session 3)
+
+- `Orchestrator.submitRequest` persists the `draft` task, the user message and a `request_received` timeline entry, registers the planning pipeline **synchronously** and returns the draft. `whenSettled(taskId)` right after it waits for planning.
+- `startPipeline(taskId, body)` is the single registry for planning and implementation pipelines: one active pipeline per task, an `AbortController` per pipeline, cleanup removes only its own entry, unexpected errors → task `failed` + `system_error`, abort-driven early return → no error.
+- `runPlanning`: draft → Claude plan run → (`awaiting_approval` + plan + session + Claude message) | `failed` (planner error preserved, else `AGENT_RESULT_INVALID`). If the task left `draft` meanwhile (cancel/reject) the result is discarded.
+- `cancel` aborts the planner, waits for the pipeline, then moves to `cancelled`. `reject` moves to `cancelled` first, then aborts. Neither produces `system_error`; a planner that ignores the abort and completes late is still ignored (tested).
+- `recoverInterrupted`: `draft` tasks and their running plan runs are failed with `INTERRUPTED` (no automatic re-plan). Tasks with a live pipeline are skipped, so calling it twice is harmless.
+- HTTP: `POST /api/requests` → **202** `{ task: <draft> }`. Approve while `draft` → 409.
+- UI: submit selects the returned draft and shows "Claude is preparing a plan…"; Approve/Reject only in `awaiting_approval`; Cancel available in `draft`. `isStale`/`mergeTask` compare `updatedAt` so a late HTTP draft response cannot roll back an SSE `awaiting_approval` already applied.
+- Tests use `tests/helpers/gated-adapter.ts` (test-only) to park the planner at a gate — no timers.
+- Not verified: behaviour with a real, slow planner (no real Claude adapter yet); the Codex live run from session 2 is still outstanding.
 
 ## Codex CLI adapter (session 2)
 
@@ -113,7 +126,7 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 ## Known issues / temporary implementations
 
 - `data/orchestration.db` was created by the manual browser test and contains one demo project/task; it is git-ignored.
-- The UI keeps `busy` for the whole `submitRequest` round-trip (plan generation is synchronous in the HTTP handler). Fine for fakes; a real planner may take minutes — consider making `/api/requests` return the `draft` task immediately and planning in the background.
+- The `draft` state is visible only briefly with the fake planner; the UI hint ("Claude is preparing a plan…") and the stale-response guard were verified by tests and a manual run, not by observing a slow planner.
 - `cancel()` on a running fake task settles the pipeline first; with real adapters, cancellation relies on the adapter honoring `AbortSignal`.
 - SSE has no replay / `Last-Event-ID`; a client that reconnects reloads via REST (the UI does this on project select).
 - The web `App.tsx` is a single component; no routing, no design system — intentional for MVP.
@@ -123,5 +136,5 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 ## Next exact work
 
 1. **First live Codex run (user-supervised)**: `CODEX_ADAPTER=cli CODEX_EXECUTABLE=<path> npm start`, register a throwaway git repo, submit a trivial request, approve. Save the raw JSONL (`codex exec --json` stdout) as `tests/fixtures/codex/live-*.jsonl` and fix parser mappings if event names differ. Confirm resume sandbox and cwd behaviour.
-2. Make `/api/requests` return the `draft` task immediately and plan in the background (needed once a real planner takes minutes).
-3. Real Claude Code adapter (`claude -p --output-format stream-json`), then git-diff capture for review input.
+2. **Real Claude Code adapter** (`claude -p --output-format stream-json`): same shape as the Codex adapter (process runner + stream parser + argv builders + stub fixtures). Planning now runs in the background, so a slow planner no longer blocks HTTP.
+3. Git-diff capture for review input.

@@ -8,19 +8,19 @@ draft -> awaiting_approval -> queued -> implementing -> review_requested -> revi
                                             +------- changes_requested <--------+
 ```
 
-| State               | Meaning                                                            |
-| ------------------- | ------------------------------------------------------------------ |
-| `draft`             | Request received, plan not yet produced                            |
-| `awaiting_approval` | Plan produced, waiting for the user                                |
-| `queued`            | User approved; waiting for implementer                             |
-| `implementing`      | Codex run in progress                                              |
-| `review_requested`  | Implementation finished; review not started                        |
-| `reviewing`         | Claude review run in progress                                      |
-| `changes_requested` | Review asked for changes; will re-enter `implementing`             |
-| `approved`          | Review passed                                                      |
-| `completed`         | Terminal success                                                   |
-| `failed`            | Terminal failure (run error, review rounds exceeded, plan failure) |
-| `cancelled`         | Terminal; user cancelled or rejected                               |
+| State               | Meaning                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `draft`             | Request persisted; Claude plan run pending or in flight (background). Not approvable yet |
+| `awaiting_approval` | Plan produced, waiting for the user                                                      |
+| `queued`            | User approved; waiting for implementer                                                   |
+| `implementing`      | Codex run in progress                                                                    |
+| `review_requested`  | Implementation finished; review not started                                              |
+| `reviewing`         | Claude review run in progress                                                            |
+| `changes_requested` | Review asked for changes; will re-enter `implementing`                                   |
+| `approved`          | Review passed                                                                            |
+| `completed`         | Terminal success                                                                         |
+| `failed`            | Terminal failure (run error, review rounds exceeded, plan failure)                       |
+| `cancelled`         | Terminal; user cancelled or rejected                                                     |
 
 ## Allowed transitions
 
@@ -38,6 +38,10 @@ draft -> awaiting_approval -> queued -> implementing -> review_requested -> revi
 
 Any other transition throws `OrchestrationError` with code `INVALID_TRANSITION`.
 The `awaiting_approval -> queued` transition additionally requires an explicit approval flag; without it the error code is `APPROVAL_REQUIRED`.
+
+## Planning is asynchronous
+
+`POST /api/requests` persists the task as `draft`, registers a background planning pipeline and returns **202** with the draft immediately. The planner later moves the task to `awaiting_approval` (plan stored, Claude message added) or `failed`; clients follow this over SSE (`task_updated`). `cancel` / `reject` are valid while `draft` and abort the planner; a late planner result never overrides `cancelled`. After a server restart, `draft` tasks are failed with `INTERRUPTED` (planning is not re-run automatically because that would spend tokens without the user asking).
 
 ## Agent events (normalized)
 
