@@ -27,6 +27,13 @@ import { summarizeUsage, type UsageRecord, type UsageSummary } from '../domain/u
 import type { AgentAdapter } from '../infrastructure/agents/agent-adapter.js';
 import { EventBus } from './events.js';
 import type { Repositories } from './repositories.js';
+import {
+  noReviewContextCollector,
+  unavailableReviewContext,
+  type ReviewContext,
+  type ReviewContextCollector,
+} from './review-context.js';
+import { buildReviewPrompt, type ImplementationReport } from './review-prompt.js';
 
 export interface OrchestratorOptions {
   clock: Clock;
@@ -36,6 +43,12 @@ export interface OrchestratorOptions {
   repos: Repositories;
   bus?: EventBus;
   maxReviewRounds?: number;
+  /**
+   * Collects the working-tree diff for review prompts. Optional: when omitted the reviewer is
+   * told the diff is unavailable (`noReviewContextCollector`). The server always injects the
+   * git-backed collector; tests inject doubles.
+   */
+  reviewContext?: ReviewContextCollector;
 }
 
 interface RunOutcome {
@@ -56,6 +69,7 @@ export class Orchestrator {
   private readonly codex: AgentAdapter;
   private readonly repos: Repositories;
   private readonly maxReviewRounds: number;
+  private readonly reviewContext: ReviewContextCollector;
   private readonly pipelines = new Map<TaskId, Promise<void>>();
   private readonly aborts = new Map<TaskId, AbortController>();
 
@@ -67,6 +81,7 @@ export class Orchestrator {
     this.repos = opts.repos;
     this.bus = opts.bus ?? new EventBus();
     this.maxReviewRounds = opts.maxReviewRounds ?? DEFAULT_MAX_REVIEW_ROUNDS;
+    this.reviewContext = opts.reviewContext ?? noReviewContextCollector;
   }
 
   // ---------- projects ----------
@@ -314,6 +329,9 @@ export class Orchestrator {
 
   private async runImplementation(taskId: TaskId, signal: AbortSignal): Promise<void> {
     let task = this.getTask(taskId);
+    // Held in memory for the next review prompt only. Never persisted; refreshed every round.
+    let implementation: ImplementationReport | null = null;
+    let context: ReviewContext | null = null;
 
     // Loop: implement → review → (approved | changes_requested → implement again | failed)
     while (!isTerminal(task.state)) {
@@ -334,6 +352,14 @@ export class Orchestrator {
         if (outcome.sessionId) task = this.save({ ...task, codexSessionId: outcome.sessionId });
 
         if (outcome.result?.kind === 'implementation') {
+          implementation = {
+            summary: outcome.result.summary,
+            changedFiles: [...outcome.result.changedFiles],
+            testsPassed: outcome.result.testsPassed,
+          };
+          // Fresh snapshot of the working tree after every implement/revise run.
+          context = await this.collectReviewContext(task, implementation.changedFiles, signal);
+          if (signal.aborted) return; // cancelled during collection: cancel() owns the final state
           task = this.move(task, 'review_requested');
           this.addMessage(
             task.projectId,
@@ -355,13 +381,15 @@ export class Orchestrator {
 
       if (task.state === 'review_requested') {
         task = this.move(task, 'reviewing');
-        const outcome = await this.executeRun(
+        const prompt = buildReviewPrompt({
           task,
-          'claude',
-          'review',
-          this.reviewPrompt(task),
-          signal,
-        );
+          implementation,
+          context: context ?? unavailableReviewContext('No review context was collected.'),
+          previousReviews: task.reviews,
+        });
+        // The prompt (and the diff inside it) exists only for this call.
+        context = null;
+        const outcome = await this.executeRun(task, 'claude', 'review', prompt, signal);
         task = this.getTask(task.id);
         if (outcome.sessionId) task = this.save({ ...task, claudeSessionId: outcome.sessionId });
 
@@ -591,8 +619,35 @@ export class Orchestrator {
     return `Task: ${task.request}\n\nReview round ${last?.round ?? '?'} requested changes:\n- ${(last?.changeRequests ?? []).join('\n- ')}`;
   }
 
-  private reviewPrompt(task: Task): string {
-    return `Review the implementation for: ${task.request}\nRound ${task.reviewRound + 1} of ${task.maxReviewRounds}.`;
+  /**
+   * Ask the collector for the current diff. Collector-level problems (not a repo, git failed)
+   * come back as `unavailable` and the review proceeds. An unexpected throw is surfaced as a
+   * system_error event (no paths or content) and also degrades to `unavailable`.
+   */
+  private async collectReviewContext(
+    task: Task,
+    changedFiles: readonly string[],
+    signal: AbortSignal,
+  ): Promise<ReviewContext> {
+    const project = this.repos.projects.findById(task.projectId);
+    if (!project) return unavailableReviewContext('Project not found.');
+    try {
+      return await this.reviewContext.collect({
+        projectRoot: project.rootPath,
+        changedFiles,
+        signal,
+      });
+    } catch (err) {
+      if (signal.aborted) return unavailableReviewContext('Cancelled.');
+      const code = err instanceof OrchestrationError ? err.code : 'REVIEW_CONTEXT_FAILED';
+      this.bus.publish({
+        type: 'system_error',
+        code,
+        message: 'Review context collection failed; the review continues without a diff.',
+        taskId: task.id,
+      });
+      return unavailableReviewContext('Review context collection failed.');
+    }
   }
 
   // ---------- helpers ----------
