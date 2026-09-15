@@ -1,22 +1,23 @@
 # STATUS
 
-Last updated: 2026-09-15 (session 7 — documentation audit and Codex handoff, Claude Code)
+Last updated: 2026-09-15 (session 9 — M11 live Codex runtime fix and completion, Codex)
 
 ## Completed milestones
 
-| Milestone                            | Status                                                                             |
-| ------------------------------------ | ---------------------------------------------------------------------------------- |
-| M0 Repo contract                     | Done                                                                               |
-| M1 Domain + state machine            | Done                                                                               |
-| M2 Fake adapters + orchestrator      | Done                                                                               |
-| M3 SQLite + HTTP API + SSE           | Done                                                                               |
-| M4 Minimal React UI                  | Done (flow verified in browser)                                                    |
-| M5 `docs/CODEX_NEXT_TASK.md`         | Done                                                                               |
-| M6 Real Codex CLI adapter            | Done (stub-tested; not yet run against the real CLI)                               |
-| M7 Asynchronous planning             | Done (POST /api/requests returns 202 + draft; planning in background)              |
-| M8 Real Claude Code CLI adapter      | Done (live-validated for `plan` start in M10; review/resume still stub-only)       |
-| M9 Git diff capture for review input | Done (temp-git-repo + fake-adapter tested; no model involved)                      |
-| M10 Live Claude planning validation  | Done (2 approved live calls: 1 auth failure + 1 successful plan on claude 2.1.260) |
+| Milestone                              | Status                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| M0 Repo contract                       | Done                                                                                                   |
+| M1 Domain + state machine              | Done                                                                                                   |
+| M2 Fake adapters + orchestrator        | Done                                                                                                   |
+| M3 SQLite + HTTP API + SSE             | Done                                                                                                   |
+| M4 Minimal React UI                    | Done (flow verified in browser)                                                                        |
+| M5 `docs/CODEX_NEXT_TASK.md`           | Done                                                                                                   |
+| M6 Real Codex CLI adapter              | Done (stub-tested; not yet run against the real CLI)                                                   |
+| M7 Asynchronous planning               | Done (POST /api/requests returns 202 + draft; planning in background)                                  |
+| M8 Real Claude Code CLI adapter        | Done (live-validated for `plan` start in M10; review/resume still stub-only)                           |
+| M9 Git diff capture for review input   | Done (temp-git-repo + fake-adapter tested; no model involved)                                          |
+| M10 Live Claude planning validation    | Done (2 approved live calls: 1 auth failure + 1 successful plan on claude 2.1.260)                     |
+| M11 Live Codex start/resume validation | Done (runtime preflight added; successful start + exact-session resume on codex-cli 0.154.0-alpha.6.2) |
 
 ## Current state
 
@@ -26,25 +27,25 @@ Real CLI adapters exist for both roles: `CodexCliAdapter` behind `CODEX_ADAPTER=
 
 Verification status per path — this table is the authoritative summary; the per-session sections below are historical records of when each fact was established:
 
-| Path                              | Implemented | Stub/fixture tested                  | Live tested                         |
-| --------------------------------- | ----------- | ------------------------------------ | ----------------------------------- |
-| Claude `plan` start               | yes         | yes                                  | **yes** (claude 2.1.260, session 6) |
-| Claude `review`                   | yes         | yes                                  | no                                  |
-| Claude `--resume`                 | yes         | yes                                  | no                                  |
-| Codex `implement` start           | yes         | yes                                  | no                                  |
-| Codex `revise` / resume           | yes         | yes                                  | no                                  |
-| Git review context (bounded diff) | yes         | yes (temp git repos + fake adapters) | n/a (no model involved)             |
-| Orchestrator full loop            | yes         | yes (fake adapters)                  | no                                  |
+| Path                              | Implemented | Stub/fixture tested                  | Live tested                                                        |
+| --------------------------------- | ----------- | ------------------------------------ | ------------------------------------------------------------------ |
+| Claude `plan` start               | yes         | yes                                  | **yes** (claude 2.1.260, session 6)                                |
+| Claude `review`                   | yes         | yes                                  | no                                                                 |
+| Claude `--resume`                 | yes         | yes                                  | no                                                                 |
+| Codex `implement` start           | yes         | yes                                  | **yes** (codex-cli 0.154.0-alpha.6.2, session 9)                   |
+| Codex `revise` / resume           | yes         | yes                                  | **yes** (same session id, sandbox override + child cwd, session 9) |
+| Git review context (bounded diff) | yes         | yes (temp git repos + fake adapters) | n/a (no model involved)                                            |
+| Orchestrator full loop            | yes         | yes (fake adapters)                  | no                                                                 |
 
 Review prompts carry a bounded, read-only git diff of the working tree (session 5); it is memory-only and never persisted.
 
-Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on a throwaway repository. The first failed at the API step (the standalone CLI was logged out); after the user ran `claude auth login`, the second **produced a valid structured plan** with real token usage. Both captures were sanitized into fixtures. **Codex has never been run live** — that is the next milestone (M11), specified in `docs/CODEX_NEXT_TASK.md`.
+Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on a throwaway repository. M11 used two separately approved attempts: session 8 recorded one failed Codex start caused by an incomplete Desktop runtime path; session 9 selected the complete runtime and successfully ran one new start plus one exact-session resume. Codex start/resume are now live-validated; live Claude review and the full two-provider loop remain unverified.
 
 ## Verification log
 
 | Command                                                 | Result                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                              | 15 files, 186 tests passed (179 → 186: +3 live auth-error tests, +4 live successful-plan tests)                                                                                                                                                                                                                               |
+| `npm test`                                              | 15 files, 197 tests passed (186 → 197 in M11: runtime preflight/path normalization plus failed and successful live-capture regressions)                                                                                                                                                                                       |
 | `npm run typecheck`                                     | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
 | `npm run lint`                                          | clean                                                                                                                                                                                                                                                                                                                         |
 | `npx prettier --check .`                                | clean                                                                                                                                                                                                                                                                                                                         |
@@ -103,9 +104,35 @@ Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on 
 ### Still unverified
 
 - Resume (`--resume`), review runs, and the orchestrator's full implement → review loop against a live Claude.
-- Any live Codex run (the Codex adapter remains stub-tested only).
+- A successful live Codex implementation and any live Codex resume run.
 - Whether long runs hit the timeout, and how a real permission denial surfaces (`permission_denials` was empty here).
 - Side effect to keep in mind: each live planning run leaves a plan markdown file in `~/.claude/plans/`.
+
+## Live Codex validation (sessions 8–9, M11 — done)
+
+### Root cause and fail-fast runtime validation
+
+- Session 8 selected `C:\Users\Study\.codex\.sandbox-bin\codex.exe`. Its SHA-256 matched the Desktop runtime's CLI, but that directory lacked `codex-code-mode-host.exe`, `codex-command-runner.exe` and `codex-windows-sandbox-setup.exe`. The CLI therefore reached the model but all file operations failed closed. The parser correctly preserves its real usage and emits `run_failed(CODEX_ITEM_ERROR)` despite process exit 0 and `turn.completed`.
+- `CodexCliAdapter` now validates a Windows absolute `codex.exe` at construction time. The executable and all three sibling helpers must exist or configuration fails with `VALIDATION_FAILED` naming the selected executable and missing components, before `runProcess` or a model call. PATH-based `codex` and wrapper/stub executables are unaffected. No user path or private runtime hash is hardcoded, and the application does not auto-discover Desktop hash directories.
+- Live preflight explicitly selected `C:\Users\Study\AppData\Local\OpenAI\Codex\bin\12219cbfbcbddde7\codex.exe` through the harness's `CODEX_EXECUTABLE` equivalent. Version was `codex-cli 0.154.0-alpha.6.2`; the executable and all three helpers existed. The two CLI copies had identical SHA-256 `960C111D47AFD61669954B9DF9E56083E302EDBFA3EF6962D81DCC14A30051DC`.
+
+### Successful start and resume
+
+- After the runtime fix, the user approved exactly one new start and, only after success, one resume. Session 9 ran **one start and one resume**, with **zero retries** and **zero Claude calls**. Across M11's two separately approved attempts, there were two starts (one failed in session 8, one successful in session 9) and one successful resume.
+- Throwaway repository: `C:\Users\Study\AppData\Local\Temp\orchestration-m11-runtime-20260915-2245\repo`; sentinel: its parent `SENTINEL.txt`. The product repository was never passed as `-C`, `cwd` or prompt content. The one-off harness reused production argv builders, runtime preflight, `runProcess` (`shell:false`, timeout, `AbortSignal`) and `CodexJsonlParser`, and was dry-run against the stub first.
+- Start argv after the executable: `exec --json --sandbox workspace-write -C C:\Users\Study\AppData\Local\Temp\orchestration-m11-runtime-20260915-2245\repo -`; prompt on stdin. Exit 0 after **16,771 ms**, stdout **9 JSONL lines**, stderr empty. It created only untracked `hello.txt` with `Hello from M11.` and returned a UUID session id.
+- Resume argv: `exec resume --json -c sandbox_mode="workspace-write" <exact-start-session-id> -`; prompt on stdin; child `cwd` remained the throwaway root. Exit 0 after **17,908 ms**, stdout **9 JSONL lines**, stderr empty. `thread.started` returned the exact same session id and the file changed to `Hello again from M11.`. This confirms resume argv acceptance, exact-session selection, cwd workspace selection and context continuity. The explicit config override was accepted while user config remained `danger-full-access`; writes stayed inside the intended workspace.
+- Both raw streams had the same shape: `thread.started` → `turn.started` → completed `agent_message` → started/completed `file_change` → started/completed `command_execution` (exit 0) → completed `agent_message` → `turn.completed`. There were no error or reasoning events, malformed/non-JSON lines, unknown events or duplicate terminals. Normalized order was `session_started` → `message_delta` → `command_started` → `command_completed` → `message_delta` → `usage_reported` → `run_completed`, with exactly one usage before one terminal.
+- Start usage: input 57,058; cached input 49,664; cache-write input 0; output 331; reasoning 28; total 57,389. Resume usage: input 119,922; cached input 110,080; cache-write input 0; output 643; reasoning 28; total 120,565. Each run reported usage exactly once and separately. `UsageSnapshot` has no cache-write field, so that observed field remains documented rather than added to the domain.
+- Real `file_change` paths were absolute. The adapter now accepts only project-contained paths and normalizes them to portable relative paths (`hello.txt`); outside paths are discarded, and the existing Git-status fallback applies when none remain.
+
+### Captures, safety and verification
+
+- Field-whitelisted fixtures: `live-start-missing-host-v0.154.0-alpha.6.2.jsonl`, `live-start-v0.154.0-alpha.6.2.jsonl` and `live-resume-v0.154.0-alpha.6.2.jsonl`. They retain event names, nesting, order, statuses, exit codes and real usage; session/item ids, absolute paths, command output, machine details and prompt-derived text are replaced. Raw scans found no API-key/authorization/password/access-token patterns; raw absolute paths, session ids and prompt phrases were removed from fixtures.
+- Final throwaway Git status was exactly `?? hello.txt`; no file was staged or committed after the initial repository commit. README SHA-256 stayed `6529B2F843E72D6291F35C6ABA72E93BDDBC8626CD63046D32ED357CB14966AE`; sentinel stayed `752250F26CFF7977CA79B4BE20DA2E9D2A59B2E22FC8A8C0237CF37B963EC7CE`. Final `hello.txt` SHA-256 was `7A98F309829C7B144F5503DB55075632126D3CC4428A0E54555863929F7795E8`.
+- Raw captures `data/live-captures/codex-start-20260915-2245.raw.jsonl` and `data/live-captures/codex-resume-20260915-2245.raw.jsonl`, the harness, and its stub dry-run output are deleted by verified exact paths after final verification.
+- Final offline verification: `npm test` 15 files / 197 tests, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build` and `git diff --check` all pass.
+- Still unverified: live Claude review, the full orchestrator loop with both real CLIs, timeout behaviour on a long real run, a real permission denial, and whether the sandbox would block a deliberate out-of-root write (not attempted).
 
 ## Review context / git diff capture (session 5)
 
@@ -235,16 +262,18 @@ resume: exec resume --json -c sandbox_mode="workspace-write" [--skip-git-repo-ch
 
 - Session id: `thread.started.thread_id` → `session_started`. On resume the adapter first re-announces the given id; an identical id from the CLI is deduplicated, a different one is passed through (orchestrator stores the last).
 - Usage: `turn.completed.usage` → `actual` (missing fields `null`). Exactly one `usage_reported` per run, always **before** the terminal event; `unavailable` if none was reported. No estimation.
-- Result: `implementation` with summary = last agent message (≤ 2000 chars), `changedFiles` from `file_change` items else `git status --porcelain` fallback (toggle `gitStatusFallback`), `testsPassed` from the exit code of the last recognised test command (`npm test`, `npx vitest`, `pytest`, …) else `null`.
+- Result: `implementation` with summary = last agent message (≤ 2000 chars), project-contained `changedFiles` normalized to portable relative paths from `file_change` items else `git status --porcelain` fallback (toggle `gitStatusFallback`), `testsPassed` from the exit code of the last recognised test command (`npm test`, `npx vitest`, `pytest`, …) else `null`.
 - Terminal: exactly one; lines after it are ignored. Non-JSON / malformed / unknown lines are counted and skipped. Process exit without a completion → `run_failed` (`TIMEOUT` / `CANCELLED` / `SPAWN_FAILED` / `CODEX_EXITED_WITHOUT_RESULT`) with a ≤ 500-char stderr tail.
 - Process runner: `spawn(file, args, {shell:false, windowsHide:true})`, env = `BASE_ENV_KEYS` (PATH/HOME/USERPROFILE/SYSTEMROOT/TEMP/TMP/COMSPEC/PATHEXT) + explicit allowlist, stdout/stderr tails capped at 2 MiB, SIGTERM → SIGKILL after `killGraceMs` (5 s default; Windows additionally `taskkill /pid <pid> /T /F` via argv), children tracked and killed on `exit`/SIGINT/SIGTERM, one summary log line per run (executable, argc, cwd, outcome, exit code, ms).
 
-### Not yet verified / risks
+### Live verification and remaining risks
 
-- The JSONL event names (`thread.started`, `item.*`, `turn.completed`, …) follow the documented `codex exec --json` shape but have **not** been confirmed against live output of 0.154.0-alpha.6.2. First real run: capture stdout to a fixture and adjust `codex-jsonl-parser.ts` (mapping table in its header) if names differ.
-- `-c sandbox_mode="workspace-write"` on resume is assumed to override the persisted session sandbox; confirm on first real resume.
-- Whether `exec resume` honours the child `cwd` as the workspace (no `-C`) is unverified. If not, out-of-root writes would still be blocked by the CLI sandbox, but the workspace could be wrong.
+- M11 confirmed live `thread.started`, `turn.started`, completed `error`, `agent_message` and `file_change` items, started/completed `command_execution`, and `turn.completed.usage` on 0.154.0-alpha.6.2. No live reasoning item appeared.
+- `exec resume --json -c sandbox_mode="workspace-write" <sessionId> -` accepted the exact start session id, returned the same id and modified the expected file under the child `cwd`; no `-C` was needed on this version.
+- An explicit absolute Windows `codex.exe` is now rejected before a run when its sibling Desktop runtime components are missing. PATH-based `codex` remains spawn-resolved and cannot be preflighted without changing its semantics.
 - Approval prompts in non-interactive mode: behaviour unknown; currently surfaces as `TIMEOUT`.
+- Live runs create normal session rollouts under `~/.codex/sessions/`. This expected CLI state lies outside the project root.
+- The successful run demonstrated in-root writes under `workspace-write`; a deliberate out-of-root write was not attempted, so denial behaviour remains unverified.
 - Windows `taskkill` escalation path is exercised only indirectly (the stub ignores SIGTERM and is killed by `SIGKILL` within the grace period).
 
 ## Files created

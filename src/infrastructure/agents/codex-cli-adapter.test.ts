@@ -1,15 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { OrchestrationError } from '../../domain/errors.js';
+import { FixedClock } from '../../domain/ports.js';
 import {
   FORBIDDEN_CODEX_ARGS,
   FORBIDDEN_CODEX_PAIRS,
+  REQUIRED_WINDOWS_CODEX_RUNTIME_FILES,
+  CodexCliAdapter,
+  assertCompleteLocalCodexRuntime,
   assertNoForbiddenArgs,
   buildResumeArgs,
   buildStartArgs,
+  normalizeCodexChangedFiles,
 } from './codex-cli-adapter.js';
 
 const ROOT = 'D:\\proj\\demo';
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 describe('buildStartArgs', () => {
   it('produces the verified argv shape with prompt on stdin', () => {
@@ -87,5 +103,61 @@ describe('forbidden options', () => {
     ];
     for (const args of bad) expect(() => assertNoForbiddenArgs(args), args.join(' ')).toThrow();
     expect(() => assertNoForbiddenArgs(buildStartArgs({ projectRoot: ROOT }))).not.toThrow();
+  });
+});
+
+describe('explicit local Codex runtime preflight', () => {
+  function runtimeDirectory(): string {
+    const directory = mkdtempSync(join(tmpdir(), 'codex-runtime-'));
+    temporaryDirectories.push(directory);
+    return directory;
+  }
+
+  it('accepts a complete Windows runtime beside an explicit codex.exe', () => {
+    const directory = runtimeDirectory();
+    for (const file of REQUIRED_WINDOWS_CODEX_RUNTIME_FILES) {
+      writeFileSync(join(directory, file), 'fixture');
+    }
+    expect(() =>
+      assertCompleteLocalCodexRuntime(join(directory, 'codex.exe'), 'win32'),
+    ).not.toThrow();
+  });
+
+  it('rejects an incomplete explicit codex.exe before an adapter can run', () => {
+    const directory = runtimeDirectory();
+    const executable = join(directory, 'codex.exe');
+    writeFileSync(executable, 'fixture');
+
+    let message = '';
+    try {
+      assertCompleteLocalCodexRuntime(executable, 'win32');
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain(executable);
+    for (const component of REQUIRED_WINDOWS_CODEX_RUNTIME_FILES.slice(1)) {
+      expect(message).toContain(component);
+    }
+    if (process.platform === 'win32') {
+      expect(() => new CodexCliAdapter({ executable, clock: new FixedClock() })).toThrowError(
+        /Incomplete Codex runtime/,
+      );
+    }
+  });
+
+  it('does not impose private-runtime layout on PATH names or non-Codex wrappers', () => {
+    expect(() => assertCompleteLocalCodexRuntime('codex', 'win32')).not.toThrow();
+    expect(() => assertCompleteLocalCodexRuntime(process.execPath, 'win32')).not.toThrow();
+  });
+});
+
+describe('normalizeCodexChangedFiles', () => {
+  it('makes in-root absolute paths relative and rejects outside paths', () => {
+    expect(
+      normalizeCodexChangedFiles(
+        [join(ROOT, 'hello.txt'), 'nested\\file.ts', join(ROOT, 'hello.txt'), 'D:\\outside.txt'],
+        ROOT,
+      ),
+    ).toEqual(['hello.txt', 'nested/file.ts']);
   });
 });

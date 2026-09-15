@@ -18,8 +18,10 @@ import { UNAVAILABLE_USAGE, type UsageSnapshot } from '../../domain/usage.js';
  * | `{type:"item.started",   item:{type:"command_execution"}}` | command_started                 |
  * | `{type:"item.completed", item:{type:"command_execution"}}` | command_completed               |
  * | `{type:"item.completed", item:{type:"file_change"}}`    | (tracked → changedFiles)           |
+ * | `{type:"item.completed", item:{type:"error"}}`          | pending structured failure         |
+ * | `{type:"turn.started"}`                                  | ignored (known lifecycle event)    |
  * | `{type:"turn.completed", usage:{...}}`                  | usage_reported (actual)            |
- * | `{type:"turn.completed"}` / `thread.completed`          | run_completed (implementation)     |
+ * | `{type:"turn.completed"}` / `thread.completed`          | run_completed, or pending failure  |
  * | `{type:"turn.failed", error}` / `{type:"error", message}` | run_failed                      |
  * | anything else                                           | ignored, counted                   |
  *
@@ -92,6 +94,7 @@ export interface ParserState {
   malformedCount: number;
   lastMessage: string;
   changedFiles: string[];
+  pendingError: { code: string; message: string } | null;
   /** null = no test command ran; otherwise last test command's pass/fail. */
   testsPassed: boolean | null;
 }
@@ -105,6 +108,7 @@ export class CodexJsonlParser {
     malformedCount: 0,
     lastMessage: '',
     changedFiles: [],
+    pendingError: null,
     testsPassed: null,
   };
 
@@ -148,6 +152,8 @@ export class CodexJsonlParser {
       case 'item.updated':
       case 'item.completed':
         return this.item(type, obj['item']);
+      case 'turn.started':
+        return [];
       case 'turn.completed':
       case 'thread.completed':
         return this.completed(obj);
@@ -253,6 +259,16 @@ export class CodexJsonlParser {
         }
         return [];
       }
+      case 'error': {
+        if (phase !== 'item.completed') return [];
+        const message = str(item['message']);
+        if (!message) return this.unknown();
+        this.state.pendingError ??= {
+          code: str(item['code']) ?? 'CODEX_ITEM_ERROR',
+          message: tail(message, 500),
+        };
+        return [];
+      }
       default:
         return this.unknown();
     }
@@ -268,7 +284,11 @@ export class CodexJsonlParser {
   private completed(obj: Json): AgentEvent[] {
     const out = this.usageOnce(parseUsage(obj['usage']));
     this.state.terminal = true;
-    out.push({ ...this.base(), type: 'run_completed', result: this.buildResult() });
+    if (this.state.pendingError) {
+      out.push({ ...this.base(), type: 'run_failed', error: this.state.pendingError });
+    } else {
+      out.push({ ...this.base(), type: 'run_completed', result: this.buildResult() });
+    }
     return out;
   }
 

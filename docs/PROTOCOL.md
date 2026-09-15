@@ -79,6 +79,27 @@ interface AgentAdapter {
 - Implementation: `{ kind: 'implementation', summary, changedFiles: string[], testsPassed: boolean | null }`
 - Review: `{ kind: 'review', verdict: 'approve' | 'request_changes', summary, changeRequests: string[] }` — `request_changes` requires at least one change request
 
+### Codex JSONL boundary
+
+`CodexCliAdapter` runs start with `exec --json --sandbox workspace-write -C <root> -` and resume with `exec resume --json -c sandbox_mode="workspace-write" <sessionId> -`. Prompts are sent on stdin. `codex-jsonl-parser.ts` maps the provider lines as follows:
+
+On Windows, an explicitly configured absolute `codex.exe` is validated before any run: the selected executable and sibling `codex-code-mode-host.exe`, `codex-command-runner.exe` and `codex-windows-sandbox-setup.exe` must all exist. An incomplete runtime fails configuration with `VALIDATION_FAILED`. PATH-based `codex` and non-Codex wrapper/stub executables are not forced into the private Desktop runtime layout, and the application does not scan private hash directories.
+
+| Codex line                                      | AgentEvent                                                                                        |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `thread.started.thread_id`                      | `session_started`                                                                                 |
+| `turn.started`                                  | known lifecycle event; no domain event                                                            |
+| completed/updated `agent_message` item          | `message_delta`                                                                                   |
+| started/completed `command_execution` item      | `command_started` / `command_completed`                                                           |
+| completed `file_change` item                    | project-contained paths normalized to portable relative paths and accumulated into the result     |
+| completed `error` item                          | records a pending structured failure                                                              |
+| `turn.completed.usage`                          | `usage_reported` (`actual`)                                                                       |
+| `turn.completed` with no pending error          | `run_completed`                                                                                   |
+| `turn.completed` after a completed `error` item | `run_failed` after usage; this handles CLI turns that complete despite a failed command/tool host |
+| `turn.failed` or top-level `error`              | `run_failed`                                                                                      |
+
+The pending-error rule uses only the provider's structured `item.type = "error"`; it does not infer success or failure from agent prose. Usage is still emitted exactly once before the terminal event.
+
 ### Claude stream-json boundary
 
 `ClaudeCliAdapter` runs `claude --print --output-format stream-json --verbose --permission-mode plan --permission-prompts none --json-schema <schema>` and `claude-jsonl-parser.ts` maps the provider lines to the normalized events above:

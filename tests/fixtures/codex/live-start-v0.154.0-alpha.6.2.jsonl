@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"sess-live-success-0001"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item-live-start-message-0001","type":"agent_message","text":"<agent message redacted>"}}
+{"type":"item.started","item":{"id":"item-live-start-file-0001","type":"file_change","changes":[{"path":"hello.txt","kind":"add"}],"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item-live-start-file-0001","type":"file_change","changes":[{"path":"hello.txt","kind":"add"}],"status":"completed"}}
+{"type":"item.started","item":{"id":"item-live-start-command-0001","type":"command_execution","command":"powershell -Command <redacted>","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item-live-start-command-0001","type":"command_execution","command":"powershell -Command <redacted>","aggregated_output":"<command output redacted>","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item-live-start-message-0002","type":"agent_message","text":"<agent message redacted>"}}
+{"type":"turn.completed","usage":{"input_tokens":57058,"cached_input_tokens":49664,"cache_write_input_tokens":0,"output_tokens":331,"reasoning_output_tokens":28}}
