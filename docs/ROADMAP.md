@@ -10,7 +10,7 @@
 | M5        | `docs/CODEX_NEXT_TASK.md` for the real Codex CLI adapter                                                 | Done                                                                                                       |
 | M6        | Real Codex CLI adapter                                                                                   | Done (live start/resume validated in M11)                                                                  |
 | M7        | Asynchronous planning: 202 + draft, background planner, draft cancel/recovery                            | Done                                                                                                       |
-| M8        | Real Claude Code CLI adapter (plan/review, permission-mode plan, structured output)                      | Done (live `plan` start in M10 and live `review` start in M12; resume remains stub-only)                   |
+| M8        | Real Claude Code CLI adapter (plan/review, permission-mode plan, structured output)                      | Done (live plan start in M10, review start in M12, and exact-session review resume in M14)                 |
 | M9        | Git diff capture for review input (bounded, read-only, memory-only; temp-git-repo + fake-adapter tested) | Done                                                                                                       |
 | M10       | Minimal live Claude planning validation (user-supervised)                                                | Done — verified on claude 2.1.260: plan-mode stream-json, structured_output, real usage, project untouched |
 
@@ -25,11 +25,12 @@ M0–M10 are complete. The default implementer from here on is **Codex**; Claude
 | M11       | User-supervised live Codex start + resume validation (throwaway repo, sanitized fixtures) | Done — incomplete explicit Windows runtime fails fast; complete Desktop runtime verified with successful start and exact-session resume on codex-cli 0.154.0-alpha.6.2 |
 | M12       | User-supervised live Claude review validation with a bounded deliberate defect            | Done — one review start on Claude Code 2.1.260 returned schema-valid `request_changes`; workspace and sentinel remained unchanged                                      |
 | M13       | Real Orchestrator + SQLite loop across Claude plan, Codex implement and Claude resume     | Partial — live plan and implement succeeded, but a PowerShell-wrapped test command left `testsPassed=null`; guard blocked review, parser fixed offline, no retry       |
+| M14       | Resume the M13 Claude plan session through a replay-backed continuation task              | Done — one real review resume approved the bounded two-file diff and the separate M14 task completed; no plan/Codex call was repeated                                  |
 
 ### Later validation
 
-- Complete the live end-to-end loop after the M13 parser fix: plan → approve → implement → exact-session review → complete with both real CLIs.
-- Live Claude resume and cancellation/timeout/permission-denial behaviour. M13 did not reach resume.
+- One uninterrupted live process covering plan → approve → implement → exact-session review → complete. M13 and M14 prove the same stages cumulatively across a guarded continuation, not as one uninterrupted execution.
+- Live cancellation/timeout/permission-denial behaviour.
 
 ### Future candidates (not scheduled)
 

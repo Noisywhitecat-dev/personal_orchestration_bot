@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-09-16 (session 11 — M13 partial live end-to-end validation, Codex)
+Last updated: 2026-09-16 (session 12 — M14 exact-session review continuation, Codex)
 
 ## Completed milestones
 
@@ -14,12 +14,13 @@ Last updated: 2026-09-16 (session 11 — M13 partial live end-to-end validation,
 | M5 `docs/CODEX_NEXT_TASK.md`            | Done                                                                                                   |
 | M6 Real Codex CLI adapter               | Done (live start/resume validated in M11)                                                              |
 | M7 Asynchronous planning                | Done (POST /api/requests returns 202 + draft; planning in background)                                  |
-| M8 Real Claude Code CLI adapter         | Done (live `plan` start in M10 and live `review` start in M12; resume still stub-only)                 |
+| M8 Real Claude Code CLI adapter         | Done (live plan start M10, review start M12, exact-session review resume M14)                          |
 | M9 Git diff capture for review input    | Done (temp-git-repo + fake-adapter tested; no model involved)                                          |
 | M10 Live Claude planning validation     | Done (2 approved live calls: 1 auth failure + 1 successful plan on claude 2.1.260)                     |
 | M11 Live Codex start/resume validation  | Done (runtime preflight added; successful start + exact-session resume on codex-cli 0.154.0-alpha.6.2) |
 | M12 Live Claude review validation       | Done (one bounded-diff review start returned schema-valid `request_changes` on Claude Code 2.1.260)    |
 | M13 Live two-provider orchestrator loop | Partial (real plan and implement ran; review was correctly blocked by a newly observed parser gap)     |
+| M14 Exact-session review continuation   | Done (one real Claude resume approved the M13 two-file implementation; continuation task completed)    |
 
 ## Current state
 
@@ -33,15 +34,15 @@ Verification status per path — this table is the authoritative summary; the pe
 | --------------------------------- | ----------- | ------------------------------------ | ------------------------------------------------------------------ |
 | Claude `plan` start               | yes         | yes                                  | **yes** (claude 2.1.260, session 6)                                |
 | Claude `review`                   | yes         | yes                                  | **yes** (bounded deliberate defect, session 10)                    |
-| Claude `--resume`                 | yes         | yes                                  | no                                                                 |
+| Claude `--resume`                 | yes         | yes                                  | **yes** (exact M13 plan session, session 12)                       |
 | Codex `implement` start           | yes         | yes                                  | **yes** (codex-cli 0.154.0-alpha.6.2, session 9)                   |
 | Codex `revise` / resume           | yes         | yes                                  | **yes** (same session id, sandbox override + child cwd, session 9) |
 | Git review context (bounded diff) | yes         | yes (temp git repos + fake adapters) | **yes** (embedded in the live M12 review prompt)                   |
-| Orchestrator full loop            | yes         | yes (fake adapters)                  | **partial** (real plan + implement; review not reached in M13)     |
+| Orchestrator full loop            | yes         | yes (fake adapters)                  | **cumulative** (M13 plan+implement → M14 resumed review+complete)  |
 
 Review prompts carry a bounded, read-only git diff of the working tree (session 5); it is memory-only and never persisted.
 
-Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1.260) on a throwaway repository. M11 used two separately approved attempts: session 8 recorded one failed Codex start caused by an incomplete Desktop runtime path; session 9 selected the complete runtime and successfully ran one new start plus one exact-session resume. Session 10 (M12) made one approved Claude review start over a bounded deliberate defect and received `request_changes`. Session 11 (M13) connected the real Orchestrator, SQLite, Claude plan start and Codex implement start. Codex created only the requested files and its tests passed, but its Windows `pwsh.exe -Command 'npm test'` event was not recognised as a test command. The post-implementation guard therefore stopped before Claude review resume. The parser gap is fixed and fixture-tested offline; no live retry was made. Claude resume and a completed full two-provider loop remain unverified.
+Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1.260) on a throwaway repository. M11 used two separately approved attempts: session 8 recorded one failed Codex start caused by an incomplete Desktop runtime path; session 9 selected the complete runtime and successfully ran one new start plus one exact-session resume. Session 10 (M12) made one approved Claude review start over a bounded deliberate defect and received `request_changes`. Session 11 (M13) connected the real Orchestrator, SQLite, Claude plan start and Codex implement start. Codex created only the requested files and its tests passed, but its Windows `pwsh.exe -Command 'npm test'` event was not recognised as a test command, so the guard stopped before review. Session 12 (M14) replayed those two historical results without model calls and used the exact stored plan session for one real Claude review resume. The review approved and the separate continuation task completed. This proves the stages cumulatively, not in one uninterrupted three-call execution.
 
 ## Verification log
 
@@ -191,7 +192,34 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 
 - Throwaway parent: `C:\Users\Study\AppData\Local\Temp\orchestration-m13-e2e-20260916-004217-study`; repository: its `repo` child; retained DB: `m13.sqlite`. Initial HEAD remains `ac517dbb9d0df4ea1f02c6f2caf2b2dfa6680a98`; final status is exactly `?? greet.js` and `?? greet.test.js`. `package.json`, `README.md` and the parent sentinel retained their initial hashes, no dependency was added, and the product DB hash remained `52A371445CE0812CA930AEA418E7D7E9D6459F1778A6E14CB56592F08F5A08AF`.
 - The Claude plan start created one user plan file at `C:\Users\Study\.claude\plans\do-not-add-external-pure-flame.md`; it was recorded by path and left intact. No raw provider stream was retained. The exact ignored harness path `D:\PersonalProject\Orchestration_bot\data\live-captures\m13-live-e2e-harness.mjs` was removed after offline regression work.
-- M13 is **partial**, not complete. The implementation and safety stop are live-verified, but Claude review resume, exact plan-session reuse on review, bounded live review prompt delivery, verdict and completed terminal state require a separately authorized future run. This task's failed stage was not retried.
+- M13 remains **partial** as its own execution and was never retried. M14 later validated the exact plan-session review resume, bounded live review prompt, approval verdict and completed continuation state without repeating the M13 model calls.
+
+## Exact-session review continuation (session 12, M14 — done)
+
+### Token-free continuation and live call
+
+- Baseline was `origin/main` commit `5d9f361`; work ran on `feature/live-e2e-review-resume`. Initial verification passed at 15 files / 202 tests plus typecheck, lint, format, build and diff check. Claude Code remained `2.1.260`; version/help/auth and print, stream-json, verbose, plan/no-prompts, schema and resume support all passed.
+- The existing M13 DB was opened read-only. It contained the real plan, plan/implementation runs, non-empty Claude session and actual historical usage. SHA-256 was `2EB5BC4FEBE768B959C89B20EE74475EADDBB80DAB2680680DA447D9EFB2C2A1` before and after M14.
+- A composite adapter replayed the stored plan/session and the observed `greet.js` / `greet.test.js`, `testsPassed=true` implementation. These replay runs used `source=unavailable`, so M13 tokens were not counted again. Neither replay invoked Claude or Codex.
+- Stub dry-runs proved approve → `completed`, request-changes → `REVIEW_ROUNDS_EXCEEDED`, exact session propagation, SQLite reopen, prompt/diff non-persistence and second-call rejection before the adapter. The real-call budget allowed only Claude `review` resume.
+- M14 made exactly **one** real Claude resume and zero Claude starts, Codex calls, retries or other model/API calls. Safe argv was `--print --output-format stream-json --verbose --permission-mode plan --permission-prompts none --json-schema <schema> --resume <session>`; prompt was stdin and cwd/root was the M13 throwaway.
+
+### Review result and persistence
+
+- The Claude child exited 0. The persisted review run lasted **10,134 ms**. Five JSONL lines were observed: `system/init → assistant(StructuredOutput) → user(tool_result) → rate_limit_event → result/success`; unknown and malformed counts were zero.
+- Normalized order was `session_started → usage_reported → run_completed`, with exactly one usage before one terminal. The returned and persisted review session matched the M13 plan session; only the equality boolean was recorded.
+- `ReviewResultSchema` accepted `approve` with no change requests. The reviewer confirmed the exact greeting template, ESM export/imports, one normal-name `node:test`, no dependencies and no extra files, while explicitly noting that the test was statically inspected rather than executed by the reviewer.
+- Actual review usage was input **76,950**, cached input **0**, output **274**, reasoning **0**, total **77,224**. The M14 aggregate has two unavailable replay records plus this actual review; cumulative historical M13+M14 actual total is **505,888** without duplication.
+- State transitions were `draft → awaiting_approval → queued → implementing → review_requested → reviewing → approved → completed`; `reviewRound=1`. The M14 DB contains one project/task/review, three runs, six messages, three usage records and 22 timeline events. Two independent read-only reopen snapshots matched, and review markers/unified diff were absent.
+- The production collector scoped exactly `greet.js` and `greet.test.js`: 366 bytes, no omissions/truncation. The in-memory review prompt was 2,689 bytes with one begin/end marker pair and no committed-file, sentinel or product-root content.
+
+### Safety and observation note
+
+- Throwaway HEAD stayed `ac517dbb9d0df4ea1f02c6f2caf2b2dfa6680a98`; final status remained exactly `?? greet.js` and `?? greet.test.js`. All four file hashes, sentinel and product DB hash were unchanged. Throwaway `npm test` passed one test. The single existing Claude plan file remained unchanged by path/count/timestamp.
+- SQLite read-only connections updated the existing `m13.sqlite-shm` sidecar timestamp; the `m13.sqlite` content hash stayed unchanged and its WAL remained empty.
+- Retained M14 DB: `C:\Users\Study\AppData\Local\Temp\orchestration-m13-e2e-20260916-004217-study\m14.sqlite`, SHA-256 `B094B7B0017CCC6D38A04C59A8DB2A43E4E449C1525E66C4FE5F0DBCDFEF11ED` at post-run verification.
+- The observer summary was written just after the main harness attempted to read it. Consequently the outer harness reported exit 1 after the already-persisted successful terminal. No retry occurred. The later summary recorded child exit 0 and the five safe event types; independent DB/hash checks confirmed the completed result. No raw provider stream was stored.
+- Remaining live gaps: one uninterrupted three-call execution; long-run cancellation/timeout; a real permission denial; deliberate out-of-root sandbox rejection.
 
 ## Review context / git diff capture (session 5)
 
@@ -405,7 +433,7 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 
 M0–M10 were built and validated by Claude Code at the user's explicit request. That bootstrap phase is finished.
 
-- **Default implementer from here on: Codex.** The current execution document is `docs/CODEX_NEXT_TASK.md` (M13).
+- **Default implementer from here on: Codex.** The current execution document is `docs/CODEX_NEXT_TASK.md` (M14).
 - **Claude's runtime role stays planner / reviewer** (`plan` and `review` runs only, always `--permission-mode plan`).
 - During development Claude can still be asked by the user to plan, review, write documentation, or implement a specific piece — that needs an explicit request, exactly as M0–M10 did. Nothing here forbids it.
 - Real AI invocations (Claude or Codex) happen only inside a per-task approval the user granted, with the expected call count stated beforehand. There is no standing approval.
@@ -413,6 +441,6 @@ M0–M10 were built and validated by Claude Code at the user's explicit request.
 
 ## Next exact work
 
-1. **Complete the M13 live end-to-end loop** in a separately approved task after the PowerShell-wrapper parser fix — plan → approve → implement → exact-session bounded review → complete. M13's original call budget is exhausted for retry purposes.
-2. Validate Claude resume and real cancellation/timeout/permission-denial behaviour only under a separately approved bounded task.
+1. If still valuable, validate one uninterrupted live plan → approve → implement → exact-session review → complete run under a new explicit call budget. M13+M14 already establish this path cumulatively.
+2. Validate real cancellation/timeout/permission-denial behaviour only under a separately approved bounded task.
 3. Then evaluate an explicitly gated emergency-repair path and/or packaging.

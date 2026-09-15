@@ -123,6 +123,14 @@ The intermediate empty thinking/tool blocks remain known-ignored; only the termi
 `structured_output` becomes the schema-validated review result. The observed normalized order was
 `session_started → usage_reported → run_completed`, with exactly one usage event before one terminal.
 
+M14 live-validated review resume on the same Claude Code version using the exact session stored by
+the M13 plan run. Safe argv shape was `--print --output-format stream-json --verbose
+--permission-mode plan --permission-prompts none --json-schema <schema> --resume <session>`; there
+was no `--continue` or review start fallback. The five raw event types were `system/init →
+assistant(StructuredOutput) → user(tool_result) → rate_limit_event → result/success`, normalizing to
+`session_started → usage_reported → run_completed` with one usage before one terminal and no
+unknown/malformed lines. The schema-valid verdict was `approve`.
+
 ## Usage
 
 ```ts
@@ -151,8 +159,13 @@ After a successful `implement` / `revise` run the orchestrator asks a `ReviewCon
   the working tree byte-identical.
 - M13 connected the real Orchestrator, SQLite, Claude plan start and Codex implementation. The
   post-implementation validation guard stopped before context collection/review because the live
-  PowerShell-wrapped test command was not yet recognised. Thus live Claude resume and full-loop
-  review-context delivery remain unverified.
+  PowerShell-wrapped test command was not yet recognised. At the end of M13, Claude resume and
+  full-loop review-context delivery therefore remained unverified.
+- M14 resumed the exact M13 plan session without repeating either model start. A separate SQLite
+  continuation replayed the historical plan/implementation with `unavailable` usage, collected the
+  same two untracked files (366 bytes, no omission/truncation), and passed the bounded context to the
+  real Claude reviewer. Approval drove the separate task through `reviewing → approved → completed`.
+  This is cumulative M13–M14 evidence, not one uninterrupted three-call run.
 
 ## Review loop bound
 
