@@ -24,11 +24,12 @@ M0–M10 are complete. The default implementer from here on is **Codex**; Claude
 | --------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | M11       | User-supervised live Codex start + resume validation (throwaway repo, sanitized fixtures) | Done — incomplete explicit Windows runtime fails fast; complete Desktop runtime verified with successful start and exact-session resume on codex-cli 0.154.0-alpha.6.2 |
 | M12       | User-supervised live Claude review validation with a bounded deliberate defect            | Done — one review start on Claude Code 2.1.260 returned schema-valid `request_changes`; workspace and sentinel remained unchanged                                      |
+| M13       | Real Orchestrator + SQLite loop across Claude plan, Codex implement and Claude resume     | Partial — live plan and implement succeeded, but a PowerShell-wrapped test command left `testsPassed=null`; guard blocked review, parser fixed offline, no retry       |
 
 ### Later validation
 
-- Live end-to-end loop: plan → approve → implement → review → complete with both real CLIs.
-- Live Claude resume and cancellation/timeout/permission-denial behaviour.
+- Complete the live end-to-end loop after the M13 parser fix: plan → approve → implement → exact-session review → complete with both real CLIs.
+- Live Claude resume and cancellation/timeout/permission-denial behaviour. M13 did not reach resume.
 
 ### Future candidates (not scheduled)
 

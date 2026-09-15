@@ -120,3 +120,18 @@ M13 partial.
 - [ ] sentinel, committed throwaway files, product DB, and product boundaries remain intact
 - [ ] harness/log cleanup and full final verification pass
 - [ ] Korean commit, push, and PR completed as explicitly requested
+
+## 6. Observed result (2026-09-16)
+
+M13 is **partial**. All offline gates passed, then the approved live sequence made one Claude plan
+start and one Codex implement start. Claude produced a valid plan and Codex created exactly
+`greet.js` / `greet.test.js`; an independent `npm test` passed. Codex reported that test through the
+Windows Desktop host as `"<runtime>\\pwsh.exe" -Command 'npm test'`. The parser did not recognise the
+wrapped form, so `testsPassed` was `null` and the one-off post-implementation guard converted the
+completion to `run_failed(M13_POST_IMPLEMENT_GUARD)`. The required predecessor-success rule then
+prevented Claude review resume. There was no retry or third model call.
+
+The parser now recognises only the nested script after a PowerShell `-Command` boundary. A sanitized
+fixture and parser/adapter tests cover the observed shape without retaining a real path, session,
+prompt, or command output. The live loop was not rerun after this offline fix; completing Claude
+resume and the full loop requires separate future authorization.

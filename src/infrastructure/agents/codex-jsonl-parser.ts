@@ -62,9 +62,39 @@ function commandToArray(cmd: unknown): string[] {
   return [];
 }
 
+function stripMatchingQuotes(value: string): string {
+  const trimmed = value.trim();
+  const first = trimmed.at(0);
+  return trimmed.length >= 2 && (first === "'" || first === '"') && trimmed.at(-1) === first
+    ? trimmed.slice(1, -1).trim()
+    : trimmed;
+}
+
+function matchesTestCommand(command: string): boolean {
+  const normalized = stripMatchingQuotes(command);
+  return TEST_COMMAND_PREFIXES.some(
+    (prefix) => normalized === prefix || normalized.startsWith(prefix + ' '),
+  );
+}
+
 function isTestCommand(command: string[]): boolean {
-  const joined = command.join(' ');
-  return TEST_COMMAND_PREFIXES.some((p) => joined === p || joined.startsWith(p + ' '));
+  if (matchesTestCommand(command.join(' '))) return true;
+
+  // Codex on Windows reports commands as a PowerShell wrapper, for example:
+  // `"<runtime>\\pwsh.exe" -Command 'npm test'`. Recognize only the script passed to a
+  // PowerShell -Command boundary so unrelated command arguments containing test text do not count.
+  const executable = stripMatchingQuotes(command[0] ?? '')
+    .replaceAll('\\', '/')
+    .split('/')
+    .at(-1)
+    ?.toLowerCase();
+  if (!['pwsh', 'pwsh.exe', 'powershell', 'powershell.exe'].includes(executable ?? ''))
+    return false;
+
+  const commandIndex = command.findIndex(
+    (part, index) => index > 0 && part.toLowerCase() === '-command',
+  );
+  return commandIndex >= 0 && matchesTestCommand(command.slice(commandIndex + 1).join(' '));
 }
 
 function parseUsage(u: unknown): UsageSnapshot | null {
