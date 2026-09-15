@@ -326,3 +326,120 @@ describe('parseClaudeUsage', () => {
     expect(parseClaudeUsage({ usage: {} })).toBeNull();
   });
 });
+
+describe('ClaudeJsonlParser: sanitized live capture (claude 2.1.260)', () => {
+  // tests/fixtures/claude/live-auth-error-v2.1.260.jsonl is a field-whitelisted copy of one real
+  // `claude --print --output-format stream-json --verbose --permission-mode plan --permission-prompts none
+  // --json-schema …` run on 2.1.260 that failed at the API step (CLI not logged in). Session id, uuids,
+  // cwd, tool lists and timestamps were replaced; field names and nesting are the real ones.
+  it('maps the live init/assistant/result shapes; API failure → CLAUDE_ERROR with terminal_reason', () => {
+    const { events, parser } = parseFixture('live-auth-error-v2.1.260.jsonl', 'plan');
+    expect(types(events)).toEqual([
+      'session_started',
+      'message_delta',
+      'usage_reported',
+      'run_failed',
+    ]);
+    const s = events[0];
+    expect(s?.type === 'session_started' && s.sessionId).toBe('sess-live-0001'); // redacted value
+    expect(parser.state.unknownCount).toBe(0);
+    expect(parser.state.malformedCount).toBe(0);
+    expect(terminals(events)).toHaveLength(1);
+    expect(types(events).indexOf('usage_reported')).toBeLessThan(
+      types(events).indexOf('run_failed'),
+    );
+    // subtype is "success" but is_error is true: must still be a failure, never a plan.
+    expect(failed(events).code).toBe('CLAUDE_ERROR');
+    expect(failed(events).message).toBe(
+      'Failed to authenticate: OAuth session expired and could not be refreshed (terminal_reason=api_error)',
+    );
+    // Real nested usage shape: zeros reported by the CLI are actual zeros, thinking tokens mapped.
+    expect(usage(events)).toEqual({
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      source: 'actual',
+    });
+  });
+
+  it('live fixture carries no session ids, paths or machine details', () => {
+    const text = readFileSync(join(FIXTURES, 'live-auth-error-v2.1.260.jsonl'), 'utf8');
+    expect(text).not.toMatch(
+      /[A-Za-z]:\|\/Users\/|AppData|cwd|memory_paths|messaging_socket_path|powershell_path/,
+    );
+    const uuids =
+      text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
+    expect(new Set(uuids)).toEqual(new Set(['00000000-0000-4000-8000-000000000001']));
+    expect(text).toContain('"session_id":"sess-live-0001"');
+  });
+
+  it('thinking tokens from output_tokens_details map to reasoningTokens', () => {
+    const u = parseClaudeUsage({
+      usage: {
+        input_tokens: 10,
+        output_tokens: 30,
+        output_tokens_details: { thinking_tokens: 12 },
+      },
+    });
+    expect(u).toMatchObject({ outputTokens: 30, reasoningTokens: 12, totalTokens: 40 });
+  });
+});
+
+describe('ClaudeJsonlParser: sanitized live successful plan (claude 2.1.260)', () => {
+  // tests/fixtures/claude/live-plan-v2.1.260.jsonl is a field-whitelisted copy of one real
+  // successful `--permission-mode plan --json-schema …` run on 2.1.260 (23 stdout lines).
+  // Session ids, uuids, tool inputs/results, paths and timings were replaced; field names,
+  // nesting, event ordering and the usage numbers are the real ones.
+  it('maps the live successful run to session/usage/plan with one terminal', () => {
+    const { events } = parseFixture('live-plan-v2.1.260.jsonl', 'plan');
+    // No text blocks and empty thinking strings in this run: the answer came via
+    // StructuredOutput, so no message_delta / reasoning_delta is emitted.
+    expect(types(events)).toEqual(['session_started', 'usage_reported', 'run_completed']);
+    expect(terminals(events)).toHaveLength(1);
+    expect(types(events).indexOf('usage_reported')).toBeLessThan(
+      types(events).indexOf('run_completed'),
+    );
+    const s = events[0];
+    expect(s?.type === 'session_started' && s.sessionId).toBe('sess-live-plan-0001');
+    const plan = completed(events);
+    expect(plan.kind).toBe('plan');
+    expect(plan.kind === 'plan' && plan.title).toBe('Add hello.txt greeting file');
+    expect(plan.kind === 'plan' && plan.steps).toHaveLength(3);
+  });
+
+  it('live line types are all known: rate_limit_event and system/thinking_tokens are ignored, not unknown', () => {
+    const { parser } = parseFixture('live-plan-v2.1.260.jsonl', 'plan');
+    expect(parser.state.unknownCount).toBe(0);
+    expect(parser.state.malformedCount).toBe(0);
+    const text = readFileSync(join(FIXTURES, 'live-plan-v2.1.260.jsonl'), 'utf8');
+    expect(text).toContain('"type":"rate_limit_event"');
+    expect(text).toContain('"subtype":"thinking_tokens"');
+    expect(text).toContain('"type":"user"');
+  });
+
+  it('live usage: cache-creation and cache-read fold into inputTokens, thinking into reasoning', () => {
+    // Real numbers: input 8 + cache_creation 36425 + cache_read 105666 = 142099 in; output 1058
+    // (of which 346 thinking); total 143157.
+    expect(usage(parseFixture('live-plan-v2.1.260.jsonl', 'plan').events)).toEqual({
+      inputTokens: 142099,
+      cachedInputTokens: 105666,
+      outputTokens: 1058,
+      reasoningTokens: 346,
+      totalTokens: 143157,
+      source: 'actual',
+    });
+  });
+
+  it('live fixture carries no session ids, paths, tool inputs or machine details', () => {
+    const text = readFileSync(join(FIXTURES, 'live-plan-v2.1.260.jsonl'), 'utf8');
+    expect(text).not.toMatch(
+      /[A-Za-z]:\|\/Users\/|AppData|"cwd"|memory_paths|messaging_socket_path/,
+    );
+    const uuids =
+      text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
+    expect(new Set(uuids)).toEqual(new Set(['00000000-0000-4000-8000-000000000002']));
+    expect(text).toContain('"content":"<tool result redacted>"');
+  });
+});

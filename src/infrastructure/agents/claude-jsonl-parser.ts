@@ -17,7 +17,9 @@ import { UNAVAILABLE_USAGE, type UsageSnapshot } from '../../domain/usage.js';
  * | `{type:"assistant", message:{content:[{type:"thinking"}]}}`    | reasoning_delta                  |
  * | `{type:"result", subtype:"success", usage, structured_output}` | usage_reported + run_completed   |
  * | `{type:"result", is_error:true | subtype:"error_*"}`           | usage_reported + run_failed      |
- * | `{type:"user"}` (tool results), `stream_event`, anything else  | ignored, counted                 |
+ * |   (live 2.1.260: subtype stays "success", is_error=true, terminal_reason="api_error")       |
+ * | `{type:"user"}` (tool results), `stream_event`, `rate_limit_event`, `system` (non-init) | ignored |
+ * | anything else                                                  | ignored, counted as unknown      |
  *
  * Result selection (no natural-language guessing):
  *   1. `structured_output` object
@@ -175,6 +177,9 @@ function fromUsage(u: Json): UsageSnapshot | null {
   const creation = num(u['cache_creation_input_tokens']);
   const read = num(u['cache_read_input_tokens']);
   const output = num(u['output_tokens']);
+  // Live 2.1.260 shape: thinking tokens are nested under output_tokens_details (a subset of output).
+  const details = isObj(u['output_tokens_details']) ? u['output_tokens_details'] : null;
+  const reasoning = details ? num(details['thinking_tokens']) : null;
   if (raw === null && creation === null && read === null && output === null) return null;
   const input =
     raw === null && creation === null && read === null
@@ -185,7 +190,7 @@ function fromUsage(u: Json): UsageSnapshot | null {
     inputTokens: input,
     cachedInputTokens: read,
     outputTokens: output,
-    reasoningTokens: null,
+    reasoningTokens: reasoning,
     totalTokens: total,
     source: 'actual',
   };
@@ -250,8 +255,9 @@ export class ClaudeJsonlParser {
         return this.assistant(obj);
       case 'result':
         return this.result(obj);
-      case 'user':
+      case 'user': // tool results
       case 'stream_event':
+      case 'rate_limit_event': // live 2.1.260 progress telemetry
         return [];
       default:
         this.state.unknownCount += 1;
@@ -333,12 +339,16 @@ export class ClaudeJsonlParser {
       const errors = Array.isArray(obj['errors'])
         ? obj['errors'].filter((e): e is string => typeof e === 'string')
         : [];
+      // Live 2.1.260: an API failure still reports subtype "success" with is_error=true, no
+      // `errors` array, the message in `result`, and the cause in `terminal_reason`.
+      const reason = str(obj['terminal_reason']);
       const message =
         errors[0] ?? str(obj['result']) ?? `Claude reported ${subtype || 'an error'}.`;
+      const detail = reason && reason !== 'success' ? ` (terminal_reason=${reason})` : '';
       out.push({
         ...this.base(),
         type: 'run_failed',
-        error: { code: 'CLAUDE_ERROR', message: clip(message, MAX_ERROR) },
+        error: { code: 'CLAUDE_ERROR', message: clip(message + detail, MAX_ERROR) },
       });
       return out;
     }
