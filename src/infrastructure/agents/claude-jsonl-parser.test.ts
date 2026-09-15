@@ -443,3 +443,57 @@ describe('ClaudeJsonlParser: sanitized live successful plan (claude 2.1.260)', (
     expect(text).toContain('"content":"<tool result redacted>"');
   });
 });
+
+describe('ClaudeJsonlParser: sanitized live successful review (claude 2.1.260)', () => {
+  // Field-whitelisted from the one M12 live review start. The real session/UUID values, paths,
+  // prompt, tool payloads, timestamps, account data and timings are absent. Event ordering,
+  // structured review output and terminal usage numbers are preserved.
+  it('maps the live review stream to request_changes with usage before one terminal', () => {
+    const { events, parser } = parseFixture('live-review-v2.1.260.jsonl', 'review');
+    expect(types(events)).toEqual(['session_started', 'usage_reported', 'run_completed']);
+    expect(terminals(events)).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'usage_reported')).toHaveLength(1);
+    expect(types(events).indexOf('usage_reported')).toBeLessThan(
+      types(events).indexOf('run_completed'),
+    );
+    expect(parser.state).toMatchObject({
+      sessionId: 'sess-live-review-0001',
+      unknownCount: 0,
+      malformedCount: 0,
+      terminal: true,
+    });
+
+    const review = completed(events);
+    expect(review.kind).toBe('review');
+    expect(review.kind === 'review' && review.verdict).toBe('request_changes');
+    expect(review.kind === 'review' && review.changeRequests).toEqual([
+      'Change the subtraction expression back to addition so add returns the arithmetic sum.',
+      'Add a regression test with non-symmetric operands so subtraction cannot pass accidentally.',
+    ]);
+  });
+
+  it('preserves observed usage and contains only sanitized identifiers and data', () => {
+    expect(usage(parseFixture('live-review-v2.1.260.jsonl', 'review').events)).toEqual({
+      inputTokens: 70245,
+      cachedInputTokens: 33923,
+      outputTokens: 635,
+      reasoningTokens: 32,
+      totalTokens: 70880,
+      source: 'actual',
+    });
+
+    const text = readFileSync(join(FIXTURES, 'live-review-v2.1.260.jsonl'), 'utf8');
+    expect(text).not.toMatch(
+      /[A-Za-z]:\\|\/Users\/|AppData|"cwd"|memory_paths|messaging_socket_path|powershell_path|leocho/i,
+    );
+    expect(text).not.toContain('21dca74b-58c3-43a8-81a2-c588e0141bf2');
+    expect(text).not.toContain('Ensure add(a, b)');
+    const uuids =
+      text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? [];
+    expect(new Set(uuids)).toEqual(new Set(['00000000-0000-4000-8000-000000000003']));
+    expect(text.match(/"type":"(?:rate_limit_event|system|assistant|user|result)"/g)).toHaveLength(
+      9,
+    );
+    expect(text).toContain('"content":"<tool result redacted>"');
+  });
+});
