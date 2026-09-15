@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"sess-review-0002","model":"claude-test","permissionMode":"plan"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Found two problems."}]},"session_id":"sess-review-0002"}
+{"type":"result","subtype":"success","is_error":false,"result":"see structured output","structured_output":{"kind":"review","verdict":"request_changes","summary":"Missing null check and no test for the error path.","changeRequests":["Guard against a null user in Header","Add a test for the logged-out state"]},"session_id":"sess-review-0002","usage":{"input_tokens":700,"output_tokens":90}}

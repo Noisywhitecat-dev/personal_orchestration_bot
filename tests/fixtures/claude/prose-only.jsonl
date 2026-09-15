@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"sess-prose","model":"claude-test","permissionMode":"plan"}
+{"type":"result","subtype":"success","is_error":false,"result":"I would approve this change, it looks fine.","session_id":"sess-prose","usage":{"input_tokens":5,"output_tokens":5}}

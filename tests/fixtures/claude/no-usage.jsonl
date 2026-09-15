@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"sess-nousage","model":"claude-test","permissionMode":"plan"}
+{"type":"result","subtype":"success","is_error":false,"result":"```json\n{\"kind\":\"plan\",\"title\":\"Fenced plan\",\"summary\":\"Plan delivered inside a markdown fence with no usage block.\",\"steps\":[\"One step\"]}\n```","session_id":"sess-nousage"}

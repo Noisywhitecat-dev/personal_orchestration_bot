@@ -1,0 +1,9 @@
+Claude Code v2.x starting up
+{"type":"system","subtype":"init","session_id":"sess-noise","model":"claude-test","permissionMode":"plan"}
+{not json at all
+[1,2,3]
+{"type":"totally_new_event","data":{}}
+{"type":"stream_event","event":{"type":"content_block_delta"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Still fine."}]},"session_id":"sess-noise"}
+
+{"type":"result","subtype":"success","is_error":false,"result":"{\"kind\":\"plan\",\"title\":\"Noise tolerant\",\"summary\":\"Parsed despite junk lines.\",\"steps\":[\"a\",\"b\"]}","session_id":"sess-noise","usage":{"input_tokens":5,"output_tokens":5}}

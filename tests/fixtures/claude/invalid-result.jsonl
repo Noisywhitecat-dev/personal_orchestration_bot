@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"sess-invalid","model":"claude-test","permissionMode":"plan"}
+{"type":"result","subtype":"success","is_error":false,"result":"Here is my plan in prose: first do X, then Y.","structured_output":{"kind":"plan","title":"Broken","summary":"steps is empty","steps":[]},"session_id":"sess-invalid","usage":{"input_tokens":5,"output_tokens":5}}

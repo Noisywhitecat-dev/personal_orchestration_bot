@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"sess-err","model":"claude-test","permissionMode":"plan"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Starting."}]},"session_id":"sess-err"}
+{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["Authentication required: run claude login"],"session_id":"sess-err","usage":{"input_tokens":10,"output_tokens":0}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ignored after error"}]},"session_id":"sess-err"}
