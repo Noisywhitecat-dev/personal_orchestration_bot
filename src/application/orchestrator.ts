@@ -350,6 +350,7 @@ export class Orchestrator {
         );
         task = this.getTask(task.id);
         if (outcome.sessionId) task = this.save({ ...task, codexSessionId: outcome.sessionId });
+        if (signal.aborted) return; // cancelled mid-run: cancel() owns the final state
 
         if (outcome.result?.kind === 'implementation') {
           implementation = {
@@ -392,6 +393,7 @@ export class Orchestrator {
         const outcome = await this.executeRun(task, 'claude', 'review', prompt, signal);
         task = this.getTask(task.id);
         if (outcome.sessionId) task = this.save({ ...task, claudeSessionId: outcome.sessionId });
+        if (signal.aborted) return; // cancelled mid-review: cancel() owns the final state
 
         if (outcome.result?.kind !== 'review') {
           task = this.fail(
