@@ -1,0 +1,193 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font:
+    14px/1.4 system-ui,
+    sans-serif;
+  color: #222;
+  background: #f6f6f6;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 10px;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+textarea,
+input {
+  font: inherit;
+  width: 100%;
+  padding: 6px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 220px 1fr 320px;
+  grid-template-rows: 1fr 160px;
+  height: 100vh;
+  gap: 1px;
+  background: #ddd;
+}
+.pane {
+  background: #fff;
+  padding: 10px;
+  overflow: auto;
+}
+.pane h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 8px;
+  color: #666;
+}
+.left {
+  grid-column: 1;
+  grid-row: 1 / 3;
+}
+.center {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+}
+.right {
+  grid-column: 3;
+  grid-row: 1 / 3;
+}
+.bottom {
+  grid-column: 2;
+  grid-row: 2;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.project {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  padding: 6px;
+}
+.project.active {
+  border-color: #4a7;
+  background: #eef8f1;
+}
+.messages {
+  flex: 1;
+  overflow: auto;
+}
+.msg {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+.msg.user {
+  background: #e7f0ff;
+}
+.msg.claude {
+  background: #f3e9ff;
+}
+.msg.codex {
+  background: #e9f7ee;
+}
+.msg.system {
+  background: #f0f0f0;
+  color: #555;
+  font-size: 12px;
+}
+.msg .role {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #777;
+}
+.compose {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.compose textarea {
+  height: 60px;
+}
+.state {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #eee;
+  font-weight: 600;
+}
+.state.awaiting_approval {
+  background: #ffe9b3;
+}
+.state.implementing,
+.state.reviewing,
+.state.queued,
+.state.review_requested,
+.state.changes_requested {
+  background: #cfe5ff;
+}
+.state.completed,
+.state.approved {
+  background: #c9f0d5;
+}
+.state.failed {
+  background: #ffcaca;
+}
+.state.cancelled {
+  background: #e0e0e0;
+}
+.usage {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.usage th,
+.usage td {
+  text-align: right;
+  padding: 2px 4px;
+  border-bottom: 1px solid #eee;
+}
+.usage th:first-child,
+.usage td:first-child {
+  text-align: left;
+}
+.tag {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #eee;
+  margin-left: 4px;
+}
+.tag.estimated {
+  background: #ffe9b3;
+}
+.tag.unavailable {
+  background: #ffcaca;
+}
+.timeline {
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+}
+.timeline div {
+  padding: 2px 0;
+  border-bottom: 1px dotted #eee;
+}
+.error {
+  color: #b00;
+}
+.task-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid #eee;
+  margin: 2px 0;
+}
+.task-list button.active {
+  border-color: #4a7;
+}
