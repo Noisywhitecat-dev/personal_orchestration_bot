@@ -140,6 +140,17 @@ function persistedText(s: ReturnType<typeof setup>, taskId: Task['id']): string 
 }
 
 describe('review context in the orchestrator', () => {
+  it('pins every Codex implementation prompt to the registered project root', async () => {
+    const s = setup({ changeRequestsBeforeApprove: 1 });
+    await runToEnd(s.orchestrator, s.project.id);
+    const prompts = [...s.codex.prompts('implement'), ...s.codex.prompts('revise')];
+    expect(prompts).toHaveLength(2);
+    for (const prompt of prompts) {
+      expect(prompt).toContain('modify files only inside the registered project root');
+      expect(prompt).toContain('Do not write to OS temporary directories or any outside path');
+    }
+  });
+
   it('collector is called after implement with the canonical root and reported files', async () => {
     const collector = new TestCollector().next(available(DIFF_SECRET));
     const s = setup({ collector });
@@ -343,8 +354,14 @@ describe('buildReviewPrompt', () => {
     request: 'req',
     state: 'reviewing',
     plan: { title: 'T', summary: 'S', steps: ['s1'] },
+    clarificationRound: 0,
+    maxClarificationRounds: 3,
     reviewRound: 0,
     maxReviewRounds: 2,
+    maxClaudeRuns: 6,
+    maxCodexRuns: 3,
+    claudeTokenCeiling: null,
+    codexTokenCeiling: null,
     reviews: [],
     codexSessionId: null,
     claudeSessionId: null,

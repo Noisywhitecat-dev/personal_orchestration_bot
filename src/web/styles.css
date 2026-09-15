@@ -124,6 +124,9 @@ input {
 .state.awaiting_approval {
   background: #ffe9b3;
 }
+.state.awaiting_clarification {
+  background: #f7d9ff;
+}
 .state.implementing,
 .state.reviewing,
 .state.queued,
@@ -197,4 +200,92 @@ input {
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
+}
+.limits {
+  margin-top: 8px;
+  border-top: 1px solid #ddd;
+  padding-top: 6px;
+}
+.limits summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.limit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+.limit-grid label {
+  color: #555;
+  font-size: 11px;
+}
+.limit-grid input {
+  margin-top: 2px;
+}
+.clarification-box,
+.approval-box,
+.budget-card {
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fafafa;
+}
+.clarification-box textarea {
+  min-height: 72px;
+}
+.budget-card {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.runtime-status {
+  margin-bottom: 6px;
+  color: #555;
+}
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 180px minmax(0, 1fr);
+    grid-template-rows: minmax(420px, 1fr) auto auto;
+    height: auto;
+    min-height: 100vh;
+  }
+  .left {
+    grid-column: 1;
+    grid-row: 1 / 4;
+  }
+  .center {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .right {
+    grid-column: 2;
+    grid-row: 2;
+    max-height: none;
+  }
+  .bottom {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  .limit-grid {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .layout {
+    display: block;
+  }
+  .pane {
+    max-height: none;
+    border-bottom: 1px solid #ddd;
+  }
+  .left {
+    position: static;
+  }
+  .center {
+    min-height: 70vh;
+  }
+  .limit-grid {
+    grid-template-columns: 1fr;
+  }
 }

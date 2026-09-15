@@ -11,7 +11,7 @@ A personal, local-first orchestration program that lets **Claude Code** and **Co
 
 ## Status
 
-The local-first vertical slice is implemented. Deterministic fake adapters remain the default, while the real Claude and Codex CLI adapters are opt-in and have been exercised on bounded throwaway repositories. See [docs/STATUS.md](docs/STATUS.md) for the distinction between individual live paths, the cumulative M13–M14 continuation, and a still-unverified single uninterrupted live run.
+The local-first product flow is implemented, including multi-round clarification, task-level run/token budgets, restart-safe persistence, runtime diagnostics, and the responsive web UI. Deterministic fake adapters remain the default; real CLIs are opt-in. Automated and browser acceptance pass. The final uninterrupted live three-call acceptance is still open because Claude Code 2.1.260 rejected two successive planning schema variants under the fixed call/retry budget; see [docs/STATUS.md](docs/STATUS.md).
 
 ## Quick start
 
@@ -34,18 +34,22 @@ Both AI adapters default to **fake** so the whole flow runs without any CLI. Rea
 | `CODEX_ADAPTER`                                                     | `fake` (default) / `cli` | `cli` runs `codex exec` with `--sandbox workspace-write`                                                                                                                                                                          |
 | `CODEX_EXECUTABLE`, `CODEX_TIMEOUT_MS`, `CODEX_SKIP_GIT_REPO_CHECK` |                          | see `.env.example`                                                                                                                                                                                                                |
 
+Task defaults are controlled by `MAX_CLAUDE_RUNS`, `MAX_CODEX_RUNS`, `MAX_CLARIFICATION_ROUNDS`, `MAX_REVIEW_ROUNDS`, and optional `CLAUDE_TOKEN_CEILING` / `CODEX_TOKEN_CEILING`. A token ceiling is checked before each run; it is a **run-boundary ceiling**, not a provider-side hard cap, so one call can cross it.
+
 No API keys are read from `.env`.
 
 Validation scope so far:
 
-| Path                                | Status                                                                                                                                                 |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Claude `plan` start                 | **live-validated** on Claude Code 2.1.260                                                                                                              |
-| Claude `review` start               | **live-validated** with a bounded diff in M12                                                                                                          |
-| Claude `review --resume`            | **live-validated** in M14 with the exact stored M13 plan session                                                                                       |
-| Codex start / resume                | **live-validated** on codex-cli 0.154.0-alpha.6.2; an incomplete explicitly selected Windows runtime fails before invocation                           |
-| Bounded review diff                 | **live-validated** in M12 and through the M14 continuation; prompt/diff remain memory-only                                                             |
-| Full plan → implement → review loop | deterministic fake loop is complete; M13 plan+implement and M14 review form a cumulative live continuation, not one uninterrupted three-call execution |
+| Path                                | Status                                                                                                                                                                                                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude `plan` start                 | **live-validated** on Claude Code 2.1.260                                                                                                                                                                                                                                                         |
+| Claude `review` start               | **live-validated** with a bounded diff in M12                                                                                                                                                                                                                                                     |
+| Claude `review --resume`            | **live-validated** in M14 with the exact stored M13 plan session                                                                                                                                                                                                                                  |
+| Codex start / resume                | **live-validated** on codex-cli 0.154.0-alpha.6.2; an incomplete explicitly selected Windows runtime fails before invocation                                                                                                                                                                      |
+| Bounded review diff                 | **live-validated** in M12 and through the M14 continuation; prompt/diff remain memory-only                                                                                                                                                                                                        |
+| Full plan → implement → review loop | deterministic fake loop and browser acceptance are complete; M13+M14 form a cumulative live continuation. M15's uninterrupted live retry stopped at planning after the provider rejected top-level schema composition; the now-flat compatible schema is regression-tested but not live-retested. |
+
+M15 also live-validated cancellation, timeout, and a Codex `workspace-write` attempt against a non-temporary sibling directory. The attempted outside file was absent and both sentinels and repositories remained unchanged. An earlier `%TEMP%` target was intentionally discarded as invalid evidence because the runtime permits writes there.
 
 Each live Claude planning run also writes its own plan document under `~/.claude/plans/`.
 
@@ -66,6 +70,6 @@ After every Codex implement/revise run the server collects a **read-only, bounde
 | [AGENTS.md](AGENTS.md)                             | Rules for Codex when working in this repo        |
 | [CLAUDE.md](CLAUDE.md)                             | Rules for Claude Code when working in this repo  |
 
-## Non-goals (for now)
+## Optional post-MVP candidates
 
-Multi-user auth, cloud deployment, Electron/Tauri packaging, plugin marketplaces, additional model providers, automatic git commit/push.
+Multi-user auth, cloud deployment, Electron/Tauri packaging, plugin marketplaces, additional model providers, automatic git commit/push, and a separately gated Claude emergency-repair path.

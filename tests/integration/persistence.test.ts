@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -39,8 +40,33 @@ function boot(dbPath: string, idPrefix: string) {
 describe('SQLite persistence', () => {
   it('migrations are idempotent', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toBe(1);
-    expect(migrate(db)).toBe(1);
+    expect(migrate(db)).toBe(2);
+    expect(migrate(db)).toBe(2);
+    db.close();
+  });
+
+  it('migrates a v1 task table without deleting existing data', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, root_path TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL, request TEXT NOT NULL, state TEXT NOT NULL,
+        plan_json TEXT, review_round INTEGER NOT NULL DEFAULT 0, max_review_rounds INTEGER NOT NULL,
+        reviews_json TEXT NOT NULL DEFAULT '[]', codex_session_id TEXT, claude_session_id TEXT,
+        failure_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      PRAGMA user_version = 1;
+      INSERT INTO projects VALUES ('p', 'old', 'D:/old', '2026-01-01');
+      INSERT INTO tasks VALUES ('t', 'p', 'old request', 'awaiting_approval', NULL, 0, 2, '[]', NULL, NULL, NULL, '2026-01-01', '2026-01-01');
+    `);
+    expect(migrate(db)).toBe(2);
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get('t') as Record<string, unknown>;
+    expect(row['request']).toBe('old request');
+    expect(row['clarification_round']).toBe(0);
+    expect(row['max_clarification_rounds']).toBe(3);
+    expect(row['max_claude_runs']).toBe(6);
+    expect(row['max_codex_runs']).toBe(3);
+    expect(row['claude_token_ceiling']).toBeNull();
     db.close();
   });
 
@@ -48,7 +74,14 @@ describe('SQLite persistence', () => {
     const path = tempDbPath();
     const a = boot(path, 'a');
     const project = a.orchestrator.registerProject('demo', 'D:/fake/demo');
-    const task = await a.orchestrator.submitRequest(project.id, 'Add a button');
+    const task = await a.orchestrator.submitRequest(project.id, 'Add a button', {
+      maxClaudeRuns: 9,
+      maxCodexRuns: 4,
+      claudeTokenCeiling: 5000,
+      codexTokenCeiling: null,
+      maxClarificationRounds: 4,
+      maxReviewRounds: 3,
+    });
     await a.orchestrator.whenSettled(task.id);
     a.orchestrator.approve(task.id);
     await a.orchestrator.whenSettled(task.id);
@@ -70,6 +103,67 @@ describe('SQLite persistence', () => {
     expect(b.orchestrator.listTimeline(task.id)).toEqual(before.timeline);
     expect(b.orchestrator.taskUsage(task.id)).toEqual(before.usage);
     expect(before.task.state).toBe('completed');
+    expect(before.task).toMatchObject({
+      maxClaudeRuns: 9,
+      maxCodexRuns: 4,
+      claudeTokenCeiling: 5000,
+      maxClarificationRounds: 4,
+      maxReviewRounds: 3,
+    });
+    b.db.close();
+  });
+
+  it('restores an awaiting clarification and resumes it after restart', async () => {
+    const path = tempDbPath();
+    const a = boot(path, 'a');
+    const project = a.orchestrator.registerProject('demo', 'D:/fake/demo');
+    const task = await a.orchestrator.submitRequest(project.id, 'Need details [fake-clarify:1]');
+    await a.orchestrator.whenSettled(task.id);
+    expect(a.orchestrator.getTask(task.id).state).toBe('awaiting_clarification');
+    a.db.close();
+
+    const b = boot(path, 'b');
+    expect(b.orchestrator.recoverInterrupted()).toEqual({ restarted: [], failed: [] });
+    expect(b.orchestrator.getTask(task.id).state).toBe('awaiting_clarification');
+    b.orchestrator.answerClarification(task.id, 'Use node:test');
+    await b.orchestrator.whenSettled(task.id);
+    expect(b.orchestrator.getTask(task.id).state).toBe('awaiting_approval');
+    const runs = b.orchestrator.listRuns(task.id);
+    expect(runs).toHaveLength(2);
+    expect(runs[0]?.sessionId).toBe(runs[1]?.sessionId);
+    b.db.close();
+  });
+
+  it('fails a clarification resume that was in flight when the server restarted', async () => {
+    const path = tempDbPath();
+    const a = boot(path, 'a');
+    const project = a.orchestrator.registerProject('demo', 'D:/fake/demo');
+    const task = await a.orchestrator.submitRequest(project.id, 'Need details [fake-clarify:1]');
+    await a.orchestrator.whenSettled(task.id);
+    a.orchestrator.answerClarification(task.id, 'Use node:test');
+    await a.orchestrator.whenSettled(task.id);
+    // Recreate the durable shape left by a process exit during the resumed planning call.
+    a.db.prepare("UPDATE tasks SET state = 'draft', plan_json = NULL WHERE id = ?").run(task.id);
+    a.db
+      .prepare(
+        "UPDATE runs SET status = 'running', finished_at = NULL WHERE task_id = ? AND kind = 'plan' AND started_at = (SELECT MAX(started_at) FROM runs WHERE task_id = ?)",
+      )
+      .run(task.id, task.id);
+    a.db.close();
+
+    const b = boot(path, 'b');
+    expect(b.orchestrator.recoverInterrupted()).toEqual({ restarted: [], failed: [task.id] });
+    expect(b.orchestrator.getTask(task.id)).toMatchObject({
+      state: 'failed',
+      clarificationRound: 1,
+      failure: { code: 'INTERRUPTED' },
+    });
+    const runs = b.orchestrator.listRuns(task.id);
+    expect(runs).toHaveLength(2);
+    expect(runs.at(-1)).toMatchObject({
+      status: 'failed',
+      error: { code: 'INTERRUPTED' },
+    });
     b.db.close();
   });
 

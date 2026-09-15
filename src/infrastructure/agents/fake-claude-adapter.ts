@@ -12,6 +12,7 @@ export interface FakeClaudeOptions {
 }
 
 const MARKER = /\[fake-changes:(\d+)\]/;
+const CLARIFY_MARKER = /\[fake-clarify:(\d+)\]/;
 
 /**
  * Deterministic stand-in for the Claude Code CLI.
@@ -22,6 +23,9 @@ const MARKER = /\[fake-changes:(\d+)\]/;
 export class FakeClaudeAdapter implements AgentAdapter {
   readonly provider = 'claude' as const;
   private readonly reviewCounts = new Map<TaskId, number>();
+  private readonly clarificationCounts = new Map<TaskId, number>();
+  private readonly clarificationTargets = new Map<TaskId, number>();
+  private readonly taskTitles = new Map<TaskId, string>();
   private readonly cancelled = new Set<RunId>();
 
   constructor(
@@ -70,7 +74,27 @@ export class FakeClaudeAdapter implements AgentAdapter {
           source: 'actual',
         },
       };
-      const title = firstLine(input.prompt).slice(0, 60);
+      if (!this.clarificationTargets.has(input.taskId)) {
+        this.clarificationTargets.set(input.taskId, clarificationLimit(input.prompt));
+        this.clarificationCounts.set(input.taskId, completedClarificationRounds(input.prompt));
+        this.taskTitles.set(input.taskId, firstLine(input.prompt).slice(0, 60));
+      }
+      const clarificationCount = this.clarificationCounts.get(input.taskId) ?? 0;
+      const clarificationTarget = this.clarificationTargets.get(input.taskId) ?? 0;
+      if (clarificationCount < clarificationTarget) {
+        const round = clarificationCount + 1;
+        this.clarificationCounts.set(input.taskId, round);
+        yield {
+          ...base(),
+          type: 'run_completed',
+          result: {
+            kind: 'clarification',
+            question: `Clarification ${round}: what constraint should Claude use?`,
+          },
+        };
+        return;
+      }
+      const title = this.taskTitles.get(input.taskId) ?? firstLine(input.prompt).slice(0, 60);
       yield {
         ...base(),
         type: 'run_completed',
@@ -138,4 +162,14 @@ export class FakeClaudeAdapter implements AgentAdapter {
 
 function firstLine(text: string): string {
   return text.split('\n')[0]?.trim() ?? '';
+}
+
+function clarificationLimit(prompt: string): number {
+  const match = CLARIFY_MARKER.exec(prompt);
+  return match?.[1] === undefined ? 0 : Number(match[1]);
+}
+
+function completedClarificationRounds(prompt: string): number {
+  const match = /Completed clarification rounds: (\d+)\./.exec(prompt);
+  return match?.[1] === undefined ? 0 : Number(match[1]);
 }

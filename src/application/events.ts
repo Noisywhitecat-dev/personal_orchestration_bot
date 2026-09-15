@@ -1,4 +1,5 @@
 import type { ProjectId, TaskId } from '../domain/ids.js';
+import type { ExecutionBudgetStatus } from '../domain/execution-limits.js';
 import type { Message, TaskEvent } from '../domain/message.js';
 import type { Run } from '../domain/run.js';
 import type { Task } from '../domain/task.js';
@@ -17,6 +18,7 @@ export type OrchestrationEvent =
       task: UsageSummary;
       project: UsageSummary;
     }
+  | { type: 'budget_updated'; taskId: TaskId; budget: ExecutionBudgetStatus }
   | { type: 'system_error'; code: string; message: string; taskId: TaskId | null };
 
 export type Listener = (event: OrchestrationEvent) => void;

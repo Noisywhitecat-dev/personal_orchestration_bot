@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type {
+  ExecutionBudgetStatus,
+  ExecutionLimitsInput,
   Message,
   Project,
   Run,
+  RuntimeStatusResponse,
   SseEvent,
   Task,
   TaskEvent,
@@ -12,6 +15,7 @@ import type {
 import { api } from '../api.js';
 import { UsageTable } from '../components/UsageTable.js';
 import { useEvents } from '../hooks/useEvents.js';
+import { nextAction, tokenRangeLabel } from '../view-model.js';
 
 const EMPTY_USAGE: UsageSummary = {
   claude: {
@@ -33,6 +37,27 @@ const EMPTY_USAGE: UsageSummary = {
     recordCount: 0,
     hasEstimated: false,
     hasUnavailable: false,
+  },
+};
+
+const EMPTY_BUDGET: ExecutionBudgetStatus = {
+  claude: {
+    maxRuns: 0,
+    usedRuns: 0,
+    remainingRuns: 0,
+    tokenCeiling: null,
+    knownTokens: 0,
+    reliableRemainingTokens: null,
+    tokenConfidence: 'unlimited',
+  },
+  codex: {
+    maxRuns: 0,
+    usedRuns: 0,
+    remainingRuns: 0,
+    tokenCeiling: null,
+    knownTokens: 0,
+    reliableRemainingTokens: null,
+    tokenConfidence: 'unlimited',
   },
 };
 
@@ -67,11 +92,22 @@ export function App() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [timeline, setTimeline] = useState<TaskEvent[]>([]);
   const [taskUsage, setTaskUsage] = useState<UsageSummary>(EMPTY_USAGE);
+  const [budget, setBudget] = useState<ExecutionBudgetStatus>(EMPTY_BUDGET);
+  const [runtime, setRuntime] = useState<RuntimeStatusResponse | null>(null);
   const [systemLog, setSystemLog] = useState<SystemLine[]>([]);
   const [draft, setDraft] = useState('');
+  const [clarificationAnswer, setClarificationAnswer] = useState('');
   const [busy, setBusy] = useState(false);
   const [newName, setNewName] = useState('');
   const [newRoot, setNewRoot] = useState('');
+  const [limits, setLimits] = useState<ExecutionLimitsInput>({
+    maxClaudeRuns: 6,
+    maxCodexRuns: 3,
+    claudeTokenCeiling: null,
+    codexTokenCeiling: null,
+    maxClarificationRounds: 3,
+    maxReviewRounds: 2,
+  });
 
   const log = useCallback((text: string, error = false) => {
     setSystemLog((l) => [...l.slice(-199), { at: new Date().toISOString(), text, error }]);
@@ -116,11 +152,20 @@ export function App() {
     setRuns(d.runs);
     setTimeline(d.timeline);
     setTaskUsage(d.usage);
+    setBudget(d.budget);
   }, []);
 
   useEffect(() => {
     void run('load projects', loadProjects);
   }, [run, loadProjects]);
+
+  useEffect(() => {
+    void run('load runtime status', async () => {
+      const status = await api.runtimeStatus();
+      setRuntime(status);
+      setLimits(status.defaultExecutionLimits);
+    });
+  }, [run]);
 
   useEffect(() => {
     if (projectId) void run('load project', () => loadProject(projectId));
@@ -133,6 +178,7 @@ export function App() {
       setRuns([]);
       setTimeline([]);
       setTaskUsage(EMPTY_USAGE);
+      setBudget(EMPTY_BUDGET);
     }
   }, [taskId, run, loadTask]);
 
@@ -170,6 +216,9 @@ export function App() {
           if (e.projectId === projectId) setProjectUsage(e.project);
           if (e.taskId === taskId) setTaskUsage(e.task);
           return;
+        case 'budget_updated':
+          if (e.taskId === taskId) setBudget(e.budget);
+          return;
         case 'system_error':
           log(`${e.code}: ${e.message}`, true);
           return;
@@ -177,7 +226,11 @@ export function App() {
     },
     [projectId, taskId, log, applyTask],
   );
-  useEvents(onEvent);
+  const reloadAfterReconnect = useCallback(() => {
+    if (projectId) void loadProject(projectId);
+    if (taskId) void loadTask(taskId);
+  }, [projectId, taskId, loadProject, loadTask]);
+  useEvents(onEvent, reloadAfterReconnect);
 
   // ----- actions -----
   const submit = () => {
@@ -185,7 +238,7 @@ export function App() {
     const text = draft;
     setDraft('');
     void run('submit', async () => {
-      const t = await api.submitRequest(projectId, text); // 202 + draft; planning continues via SSE
+      const t = await api.submitRequestWithLimits(projectId, text, limits);
       setTaskId(t.id);
       applyTask(t);
     });
@@ -282,6 +335,45 @@ export function App() {
             Send
           </button>
         </div>
+        <details className="limits" open>
+          <summary>Execution limits</summary>
+          <div className="limit-grid">
+            <NumberLimit
+              label="Claude runs"
+              value={limits.maxClaudeRuns}
+              onChange={(value) => setLimits((l) => ({ ...l, maxClaudeRuns: value }))}
+            />
+            <NumberLimit
+              label="Codex runs"
+              value={limits.maxCodexRuns}
+              onChange={(value) => setLimits((l) => ({ ...l, maxCodexRuns: value }))}
+            />
+            <NumberLimit
+              label="Clarification rounds"
+              value={limits.maxClarificationRounds}
+              onChange={(value) => setLimits((l) => ({ ...l, maxClarificationRounds: value }))}
+            />
+            <NumberLimit
+              label="Review rounds"
+              value={limits.maxReviewRounds}
+              onChange={(value) => setLimits((l) => ({ ...l, maxReviewRounds: value }))}
+            />
+            <TokenLimit
+              label="Claude token ceiling"
+              value={limits.claudeTokenCeiling}
+              onChange={(value) => setLimits((l) => ({ ...l, claudeTokenCeiling: value }))}
+            />
+            <TokenLimit
+              label="Codex token ceiling"
+              value={limits.codexTokenCeiling}
+              onChange={(value) => setLimits((l) => ({ ...l, codexTokenCeiling: value }))}
+            />
+          </div>
+          <p className="hint">
+            Token ceilings are checked between runs; they are not provider hard caps and one run can
+            cross the ceiling.
+          </p>
+        </details>
       </main>
 
       <aside className="pane right">
@@ -296,6 +388,38 @@ export function App() {
               <strong>{task.plan?.title ?? task.request}</strong>
             </p>
             {task.state === 'draft' && <p className="hint">{PLANNING_HINT}</p>}
+            {task.state === 'awaiting_clarification' && (
+              <div className="clarification-box">
+                <p>
+                  Claude needs more information ({task.clarificationRound} /{' '}
+                  {task.maxClarificationRounds}).
+                </p>
+                <textarea
+                  aria-label="Clarification answer"
+                  value={clarificationAnswer}
+                  onChange={(e) => setClarificationAnswer(e.target.value)}
+                  placeholder="Answer Claude's question"
+                />
+                <p>
+                  <button
+                    disabled={!canAct || !clarificationAnswer.trim()}
+                    onClick={() => {
+                      const answer = clarificationAnswer;
+                      setClarificationAnswer('');
+                      void run('clarification', () => api.clarify(task.id, answer));
+                    }}
+                  >
+                    Send answer
+                  </button>{' '}
+                  <button
+                    disabled={!canAct}
+                    onClick={() => void run('reject', () => api.reject(task.id))}
+                  >
+                    Reject
+                  </button>
+                </p>
+              </div>
+            )}
             {task.plan && (
               <ol style={{ paddingLeft: 18 }}>
                 {task.plan.steps.map((s, i) => (
@@ -304,20 +428,27 @@ export function App() {
               </ol>
             )}
             {task.state === 'awaiting_approval' && (
-              <p>
-                <button
-                  disabled={!canAct}
-                  onClick={() => void run('approve', () => api.approve(task.id))}
-                >
-                  Approve
-                </button>{' '}
-                <button
-                  disabled={!canAct}
-                  onClick={() => void run('reject', () => api.reject(task.id))}
-                >
-                  Reject
-                </button>
-              </p>
+              <div className="approval-box">
+                <p>
+                  Approval permits at most {budget.codex.remainingRuns} further Codex run(s) and{' '}
+                  {budget.claude.remainingRuns} further Claude run(s), within this task's saved
+                  limits.
+                </p>
+                <p>
+                  <button
+                    disabled={!canAct}
+                    onClick={() => void run('approve', () => api.approve(task.id))}
+                  >
+                    Approve
+                  </button>{' '}
+                  <button
+                    disabled={!canAct}
+                    onClick={() => void run('reject', () => api.reject(task.id))}
+                  >
+                    Reject
+                  </button>
+                </p>
+              </div>
             )}
             {!['completed', 'failed', 'cancelled', 'awaiting_approval'].includes(task.state) && (
               <p>
@@ -330,19 +461,35 @@ export function App() {
               </p>
             )}
             <p>
+              Clarification round {task.clarificationRound} / {task.maxClarificationRounds}
+              <br />
               Review round {task.reviewRound} / {task.maxReviewRounds}
             </p>
+            <div className="budget-card">
+              <strong>Run and token limits</strong>
+              <div>
+                Claude: {budget.claude.usedRuns}/{budget.claude.maxRuns} runs ·{' '}
+                {tokenRangeLabel(budget.claude)}
+              </div>
+              <div>
+                Codex: {budget.codex.usedRuns}/{budget.codex.maxRuns} runs ·{' '}
+                {tokenRangeLabel(budget.codex)}
+              </div>
+            </div>
             {task.failure && (
-              <p className="error">
-                {task.failure.code}: {task.failure.message}
-              </p>
+              <div className="error">
+                <p>
+                  {task.failure.code}: {task.failure.message}
+                </p>
+                <p>Next action: {nextAction(task)}</p>
+              </div>
             )}
             <h2>Runs</h2>
             <ul style={{ paddingLeft: 18, fontSize: 12 }}>
               {runs.map((r) => (
                 <li key={r.id}>
                   {r.provider} · {r.kind} · {r.status}
-                  {r.sessionId && <span className="tag">{r.sessionId.slice(0, 18)}</span>}
+                  {r.hasSession && <span className="tag">session saved</span>}
                 </li>
               ))}
             </ul>
@@ -368,6 +515,13 @@ export function App() {
 
       <footer className="pane bottom">
         <h2>System</h2>
+        {runtime && (
+          <div className="runtime-status">
+            Claude {runtime.claude.adapter}/{runtime.claude.executable}, {runtime.claude.timeoutMs}
+            ms · Codex {runtime.codex.adapter}/{runtime.codex.executable}, {runtime.codex.timeoutMs}
+            ms · review diff {runtime.reviewDiffMaxBytes} bytes · DB {runtime.database}
+          </div>
+        )}
         {systemLog.map((l, i) => (
           <div key={i} className={l.error ? 'error' : ''}>
             {l.at.slice(11, 19)} {l.text}
@@ -375,6 +529,53 @@ export function App() {
         ))}
       </footer>
     </div>
+  );
+}
+
+function NumberLimit({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        type="number"
+        min={1}
+        value={value}
+        onChange={(e) => onChange(Math.max(1, Number(e.target.value) || 1))}
+      />
+    </label>
+  );
+}
+
+function TokenLimit({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        type="number"
+        min={1}
+        placeholder="unlimited"
+        value={value ?? ''}
+        onChange={(e) =>
+          onChange(e.target.value === '' ? null : Math.max(1, Number(e.target.value)))
+        }
+      />
+    </label>
   );
 }
 

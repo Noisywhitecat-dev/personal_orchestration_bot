@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { EventBus } from '../../application/events.js';
+import { toPublicEvent } from '../../shared/contracts.js';
 
 const HEARTBEAT_MS = 25_000;
 
@@ -18,7 +19,8 @@ export function attachSse(req: IncomingMessage, res: ServerResponse, bus: EventB
   res.write(': connected\n\n');
 
   const unsubscribe = bus.subscribe((event) => {
-    res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    const safe = toPublicEvent(event);
+    res.write(`event: ${safe.type}\ndata: ${JSON.stringify(safe)}\n\n`);
   });
 
   const heartbeat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);

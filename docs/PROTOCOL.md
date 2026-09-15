@@ -3,45 +3,49 @@
 ## Task states
 
 ```
-draft -> awaiting_approval -> queued -> implementing -> review_requested -> reviewing -> approved -> completed
-                                            ^                                   |
-                                            +------- changes_requested <--------+
+draft <-> awaiting_clarification
+  |
+  +-> awaiting_approval -> queued -> implementing -> review_requested -> reviewing -> approved -> completed
+                                      ^                                   |
+                                      +------- changes_requested <--------+
 ```
 
-| State               | Meaning                                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------- |
-| `draft`             | Request persisted; Claude plan run pending or in flight (background). Not approvable yet |
-| `awaiting_approval` | Plan produced, waiting for the user                                                      |
-| `queued`            | User approved; waiting for implementer                                                   |
-| `implementing`      | Codex run in progress                                                                    |
-| `review_requested`  | Implementation finished; review not started                                              |
-| `reviewing`         | Claude review run in progress                                                            |
-| `changes_requested` | Review asked for changes; will re-enter `implementing`                                   |
-| `approved`          | Review passed                                                                            |
-| `completed`         | Terminal success                                                                         |
-| `failed`            | Terminal failure (run error, review rounds exceeded, plan failure)                       |
-| `cancelled`         | Terminal; user cancelled or rejected                                                     |
+| State                    | Meaning                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `draft`                  | Request persisted; Claude plan run pending or in flight (background). Not approvable yet |
+| `awaiting_clarification` | Claude asked a persisted question; waiting for one user answer or cancellation           |
+| `awaiting_approval`      | Plan produced, waiting for the user                                                      |
+| `queued`                 | User approved; waiting for implementer                                                   |
+| `implementing`           | Codex run in progress                                                                    |
+| `review_requested`       | Implementation finished; review not started                                              |
+| `reviewing`              | Claude review run in progress                                                            |
+| `changes_requested`      | Review asked for changes; will re-enter `implementing`                                   |
+| `approved`               | Review passed                                                                            |
+| `completed`              | Terminal success                                                                         |
+| `failed`                 | Terminal failure (run error, review rounds exceeded, plan failure)                       |
+| `cancelled`              | Terminal; user cancelled or rejected                                                     |
 
 ## Allowed transitions
 
-| From                           | To                                             |
-| ------------------------------ | ---------------------------------------------- |
-| draft                          | awaiting_approval, failed, cancelled           |
-| awaiting_approval              | queued (**requires user approval**), cancelled |
-| queued                         | implementing, cancelled                        |
-| implementing                   | review_requested, failed, cancelled            |
-| review_requested               | reviewing, cancelled                           |
-| reviewing                      | approved, changes_requested, failed, cancelled |
-| changes_requested              | implementing, failed, cancelled                |
-| approved                       | completed                                      |
-| completed / failed / cancelled | (none)                                         |
+| From                           | To                                                           |
+| ------------------------------ | ------------------------------------------------------------ |
+| draft                          | awaiting_clarification, awaiting_approval, failed, cancelled |
+| awaiting_clarification         | draft, cancelled                                             |
+| awaiting_approval              | queued (**requires user approval**), cancelled               |
+| queued                         | implementing, cancelled                                      |
+| implementing                   | review_requested, failed, cancelled                          |
+| review_requested               | reviewing, cancelled                                         |
+| reviewing                      | approved, changes_requested, failed, cancelled               |
+| changes_requested              | implementing, failed, cancelled                              |
+| approved                       | completed                                                    |
+| completed / failed / cancelled | (none)                                                       |
 
 Any other transition throws `OrchestrationError` with code `INVALID_TRANSITION`.
 The `awaiting_approval -> queued` transition additionally requires an explicit approval flag; without it the error code is `APPROVAL_REQUIRED`.
 
 ## Planning is asynchronous
 
-`POST /api/requests` persists the task as `draft`, registers a background planning pipeline and returns **202** with the draft immediately. The planner later moves the task to `awaiting_approval` (plan stored, Claude message added) or `failed`; clients follow this over SSE (`task_updated`). `cancel` / `reject` are valid while `draft` and abort the planner; a late planner result never overrides `cancelled`. After a server restart, `draft` tasks are failed with `INTERRUPTED` (planning is not re-run automatically because that would spend tokens without the user asking).
+`POST /api/requests` persists the task as `draft`, registers a background planning pipeline and returns **202** with the draft immediately. The planner later moves to `awaiting_clarification`, `awaiting_approval`, or `failed`; clients follow this over SSE. `POST /api/tasks/:id/clarify` accepts one non-empty answer only while waiting, persists it, and starts one exact-session Claude resume. Multiple rounds are allowed up to the task limit. `cancel` / `reject` abort planning or clarification safely, and late results never override `cancelled`. After a server restart, an in-flight `draft` is failed with `INTERRUPTED`; planning is never re-run automatically because that would spend tokens without a fresh user action.
 
 ## Agent events (normalized)
 
@@ -76,6 +80,7 @@ interface AgentAdapter {
 ## Structured agent results
 
 - Plan: `{ kind: 'plan', title, summary, steps: string[] }` — `steps` must be non-empty
+- Clarification: `{ kind: 'clarification', question }` — the question must be non-empty
 - Implementation: `{ kind: 'implementation', summary, changedFiles: string[], testsPassed: boolean | null }`
 - Review: `{ kind: 'review', verdict: 'approve' | 'request_changes', summary, changeRequests: string[] }` — `request_changes` requires at least one change request
 
@@ -115,7 +120,9 @@ Test status is derived from the last recognised test command's completed exit co
 | `result` success + valid structured output | `run_completed`                                                                     |
 | `result` error / `error_*` subtype         | `run_failed` (`CLAUDE_ERROR`)                                                       |
 
-The plan/review result is taken from `structured_output`, else from a `result` string that is JSON or a single ```json fence. It is validated with a zod schema for the run kind (the same shape is passed as `--json-schema`). Anything else — missing fields, wrong `kind`, empty `steps`, bad `verdict`, `request_changes` without requests, prose — fails the run with `AGENT_RESULT_INVALID`. No default plan and no automatic approval is ever synthesized. The adapter supports only `plan` and `review`; `implement`/`revise` fail with `UNSUPPORTED_KIND` without spawning.
+The plan/review result is taken from `structured_output`, else from a `result` string that is JSON or a single ```json fence. It is validated with a strict zod schema for the run kind. Anything else — missing fields, wrong `kind`, empty `steps`/question, bad `verdict`, `request_changes` without requests, prose — fails the run with `AGENT_RESULT_INVALID`. No default plan and no automatic approval is synthesized. The adapter supports only `plan` and `review`; `implement`/`revise` fail with `UNSUPPORTED_KIND` without spawning.
+
+Claude Code 2.1.260 requires a top-level JSON Schema `type: "object"` and rejects top-level `oneOf`/`allOf`/`anyOf` for its custom structured-output tool. The planning schema is therefore one flat object with a required `kind` enum and optional branch fields; the strict discriminated zod union performs the final plan-versus-clarification validation. A regression test forbids top-level composition keywords.
 
 M12 live-validated the review start boundary on Claude Code 2.1.260. The real stream used
 `rate_limit_event → system/init → assistant(thinking) → assistant(StructuredOutput) → user(tool_result) → assistant(StructuredOutput) → user(tool_result) → rate_limit_event → result/success`.
@@ -144,6 +151,14 @@ interface UsageRecord {
 ```
 
 Aggregates (`UsageSummary`) are computed from records and report `hasEstimated` / `hasUnavailable` flags so the UI can label them.
+
+## Execution limits
+
+Each task persists `maxClaudeRuns`, `maxCodexRuns`, nullable provider token ceilings, `maxClarificationRounds`, and `maxReviewRounds`. Immediately before every run, one centralized guard counts persisted provider runs and sums known usage. A reached run limit or token ceiling fails the task, records `budget_blocked`, and emits a user-facing system message without inserting a run or entering the provider adapter.
+
+Token ceilings are **run-boundary ceilings**, not provider hard caps: usage is reported only after a call, so one call may cross its ceiling. When any usage record is `estimated` or `unavailable`, the public budget reports that confidence and omits a supposedly reliable remaining-token value. A null ceiling is unlimited.
+
+REST and SSE use public DTOs that remove every session id. They expose only session-presence booleans. `GET /api/runtime-status` is token-free and returns adapter modes, executable readiness classifications, timeouts, review byte budget, database basename, and default limits—never executable paths, environment values, credentials, prompts, or diffs.
 
 ## Review context (ephemeral)
 

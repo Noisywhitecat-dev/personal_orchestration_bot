@@ -1,6 +1,15 @@
 import type { AgentEvent, AgentResult } from '../domain/agent-events.js';
 import { OrchestrationError } from '../domain/errors.js';
 import {
+  budgetFailureFor,
+  DEFAULT_MAX_CLARIFICATION_ROUNDS,
+  DEFAULT_MAX_CLAUDE_RUNS,
+  DEFAULT_MAX_CODEX_RUNS,
+  executionBudgetStatus,
+  type ExecutionBudgetStatus,
+  type ExecutionLimitsInput,
+} from '../domain/execution-limits.js';
+import {
   asMessageId,
   asProjectId,
   asRunId,
@@ -43,6 +52,7 @@ export interface OrchestratorOptions {
   repos: Repositories;
   bus?: EventBus;
   maxReviewRounds?: number;
+  defaultExecutionLimits?: Partial<ExecutionLimitsInput>;
   /**
    * Collects the working-tree diff for review prompts. Optional: when omitted the reviewer is
    * told the diff is unavailable (`noReviewContextCollector`). The server always injects the
@@ -69,6 +79,7 @@ export class Orchestrator {
   private readonly codex: AgentAdapter;
   private readonly repos: Repositories;
   private readonly maxReviewRounds: number;
+  private readonly defaultExecutionLimits: ExecutionLimitsInput;
   private readonly reviewContext: ReviewContextCollector;
   private readonly pipelines = new Map<TaskId, Promise<void>>();
   private readonly aborts = new Map<TaskId, AbortController>();
@@ -81,6 +92,15 @@ export class Orchestrator {
     this.repos = opts.repos;
     this.bus = opts.bus ?? new EventBus();
     this.maxReviewRounds = opts.maxReviewRounds ?? DEFAULT_MAX_REVIEW_ROUNDS;
+    this.defaultExecutionLimits = validateExecutionLimits({
+      maxClaudeRuns: DEFAULT_MAX_CLAUDE_RUNS,
+      maxCodexRuns: DEFAULT_MAX_CODEX_RUNS,
+      claudeTokenCeiling: null,
+      codexTokenCeiling: null,
+      maxClarificationRounds: DEFAULT_MAX_CLARIFICATION_ROUNDS,
+      maxReviewRounds: this.maxReviewRounds,
+      ...opts.defaultExecutionLimits,
+    });
     this.reviewContext = opts.reviewContext ?? noReviewContextCollector;
   }
 
@@ -134,6 +154,15 @@ export class Orchestrator {
     return summarizeUsage(this.repos.usage.listByProject(projectId));
   }
 
+  budgetStatus(taskId: TaskId): ExecutionBudgetStatus {
+    const task = this.getTask(taskId);
+    return executionBudgetStatus(
+      task,
+      this.repos.runs.listByTask(taskId),
+      this.repos.usage.listByTask(taskId),
+    );
+  }
+
   // ---------- commands ----------
 
   /**
@@ -141,20 +170,34 @@ export class Orchestrator {
    * Resolves immediately with the `draft` task; the planner moves it to
    * `awaiting_approval` (or `failed`) later. Use `whenSettled()` to wait.
    */
-  async submitRequest(projectId: ProjectId, request: string): Promise<Task> {
+  async submitRequest(
+    projectId: ProjectId,
+    request: string,
+    executionLimits?: Partial<ExecutionLimitsInput>,
+  ): Promise<Task> {
     const project = this.repos.projects.findById(projectId);
     if (!project)
       throw new OrchestrationError('PROJECT_NOT_FOUND', `Project ${projectId} not found.`);
 
     const now = this.clock.now();
+    const limits = validateExecutionLimits({
+      ...this.defaultExecutionLimits,
+      ...executionLimits,
+    });
     const task: Task = {
       id: asTaskId(this.ids.next()),
       projectId,
       request,
       state: 'draft',
       plan: null,
+      clarificationRound: 0,
+      maxClarificationRounds: limits.maxClarificationRounds,
       reviewRound: 0,
-      maxReviewRounds: this.maxReviewRounds,
+      maxReviewRounds: limits.maxReviewRounds,
+      maxClaudeRuns: limits.maxClaudeRuns,
+      maxCodexRuns: limits.maxCodexRuns,
+      claudeTokenCeiling: limits.claudeTokenCeiling,
+      codexTokenCeiling: limits.codexTokenCeiling,
       reviews: [],
       codexSessionId: null,
       claudeSessionId: null,
@@ -172,6 +215,35 @@ export class Orchestrator {
     return task;
   }
 
+  /** Persist one user answer, then resume the exact Claude planning session once. */
+  answerClarification(taskId: TaskId, answer: string): Task {
+    let task = this.getTask(taskId);
+    if (task.state !== 'awaiting_clarification') {
+      throw new OrchestrationError(
+        'INVALID_TRANSITION',
+        `Task cannot accept clarification while '${task.state}'.`,
+      );
+    }
+    task = this.move(task, 'draft');
+    this.addMessage(task.projectId, task.id, 'user', answer);
+    this.appendTimeline(task.id, null, 'clarification_answered', {
+      round: task.clarificationRound,
+      length: answer.length,
+    });
+    const prompt = [
+      task.request,
+      '',
+      `Completed clarification rounds: ${task.clarificationRound}.`,
+      'Clarification response from the user:',
+      answer,
+      '',
+      'Continue clarifying if essential information is still missing; otherwise return the final plan.',
+      'For kind "plan", include title, summary, and steps. For kind "clarification", include question. Do not include fields for the other kind.',
+    ].join('\n');
+    this.startPipeline(task.id, (signal) => this.runPlanning(task.id, signal, prompt));
+    return task;
+  }
+
   /** User approval. Transitions to `queued` and starts the implementation pipeline in the background. */
   approve(taskId: TaskId): Task {
     let task = this.getTask(taskId);
@@ -181,7 +253,7 @@ export class Orchestrator {
     return task;
   }
 
-  /** User rejection. Allowed while `draft` (aborts planning) or `awaiting_approval`. */
+  /** User rejection. Allowed while planning/clarifying or awaiting approval. */
   reject(taskId: TaskId, reason?: string): Task {
     let task = this.getTask(taskId);
     // Move first so a late planner result sees a non-draft state and leaves it alone.
@@ -297,17 +369,43 @@ export class Orchestrator {
   }
 
   /** draft → (Claude plan run) → awaiting_approval | failed. Leaves the task alone if it left `draft` meanwhile. */
-  private async runPlanning(taskId: TaskId, signal: AbortSignal): Promise<void> {
+  private async runPlanning(taskId: TaskId, signal: AbortSignal, prompt?: string): Promise<void> {
     let task = this.getTask(taskId);
     if (task.state !== 'draft' || signal.aborted) return;
 
-    const outcome = await this.executeRun(task, 'claude', 'plan', task.request, signal);
+    const outcome = await this.executeRun(
+      task,
+      'claude',
+      'plan',
+      prompt ?? this.planningPrompt(task),
+      signal,
+    );
 
     // Cancelled or rejected while the planner was running: cancel()/reject() own the final state.
     task = this.getTask(taskId);
     if (signal.aborted || task.state !== 'draft') return;
 
     if (outcome.sessionId) task = this.save({ ...task, claudeSessionId: outcome.sessionId });
+
+    if (outcome.result?.kind === 'clarification') {
+      const round = task.clarificationRound + 1;
+      if (round > task.maxClarificationRounds) {
+        this.appendTimeline(task.id, null, 'clarification_limit_exceeded', {
+          attemptedRound: round,
+          maxClarificationRounds: task.maxClarificationRounds,
+        });
+        this.fail(task, {
+          code: 'CLARIFICATION_ROUNDS_EXCEEDED',
+          message: `Claude requested clarification beyond ${task.maxClarificationRounds} allowed rounds. Submit a new task with more detail or a higher limit.`,
+        });
+        return;
+      }
+      task = this.save({ ...task, clarificationRound: round });
+      this.addMessage(task.projectId, task.id, 'claude', outcome.result.question);
+      this.appendTimeline(task.id, null, 'clarification_requested', { round });
+      this.move(task, 'awaiting_clarification');
+      return;
+    }
 
     if (outcome.result?.kind === 'plan') {
       const { title, summary, steps } = outcome.result;
@@ -456,6 +554,20 @@ export class Orchestrator {
     if (!project)
       throw new OrchestrationError('PROJECT_NOT_FOUND', `Project ${task.projectId} not found.`);
 
+    const budgetFailure = budgetFailureFor(
+      provider,
+      task,
+      this.repos.runs.listByTask(task.id),
+      this.repos.usage.listByTask(task.id),
+    );
+    if (budgetFailure) {
+      this.appendTimeline(task.id, null, 'budget_blocked', {
+        provider,
+        code: budgetFailure.code,
+      });
+      return { result: null, error: budgetFailure, sessionId: null };
+    }
+
     const adapter = provider === 'claude' ? this.claude : this.codex;
     const existingSession = provider === 'claude' ? task.claudeSessionId : task.codexSessionId;
 
@@ -473,6 +585,7 @@ export class Orchestrator {
     };
     this.repos.runs.insert(run);
     this.bus.publish({ type: 'run_updated', run });
+    this.publishBudget(task.id);
     this.appendTimeline(task.id, run.id, 'run_started', { provider, kind });
 
     const input = {
@@ -548,7 +661,7 @@ export class Orchestrator {
     switch (event.type) {
       case 'session_started':
         outcome.sessionId = event.sessionId;
-        this.appendTimeline(task.id, run.id, event.type, { sessionId: event.sessionId });
+        this.appendTimeline(task.id, run.id, event.type, { sessionPresent: true });
         return;
       case 'message_delta':
         onText(event.text);
@@ -591,6 +704,7 @@ export class Orchestrator {
           task: this.taskUsage(task.id),
           project: this.projectUsage(task.projectId),
         });
+        this.publishBudget(task.id);
         return;
       }
       case 'run_completed':
@@ -606,11 +720,21 @@ export class Orchestrator {
 
   // ---------- prompts ----------
 
+  private planningPrompt(task: Task): string {
+    return [
+      task.request,
+      '',
+      'Act as the project planner. If essential information is missing, return one concise clarification question. Otherwise return a concrete implementation plan.',
+      'For kind "plan", include title, summary, and steps. For kind "clarification", include question. Do not include fields for the other kind.',
+    ].join('\n');
+  }
+
   private implementPrompt(task: Task): string {
     const plan = task.plan;
     return [
       `Task: ${task.request}`,
       plan ? `Plan: ${plan.title}\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` : '',
+      'Safety boundary: modify files only inside the registered project root. Do not write to OS temporary directories or any outside path.',
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -618,7 +742,11 @@ export class Orchestrator {
 
   private revisePrompt(task: Task): string {
     const last = task.reviews[task.reviews.length - 1];
-    return `Task: ${task.request}\n\nReview round ${last?.round ?? '?'} requested changes:\n- ${(last?.changeRequests ?? []).join('\n- ')}`;
+    return [
+      `Task: ${task.request}`,
+      `Review round ${last?.round ?? '?'} requested changes:\n- ${(last?.changeRequests ?? []).join('\n- ')}`,
+      'Safety boundary: modify files only inside the registered project root. Do not write to OS temporary directories or any outside path.',
+    ].join('\n\n');
   }
 
   /**
@@ -722,6 +850,35 @@ export class Orchestrator {
     this.repos.taskEvents.insert(entry);
     this.bus.publish({ type: 'timeline_appended', entry });
   }
+
+  private publishBudget(taskId: TaskId): void {
+    this.bus.publish({ type: 'budget_updated', taskId, budget: this.budgetStatus(taskId) });
+  }
+}
+
+function validateExecutionLimits(limits: ExecutionLimitsInput): ExecutionLimitsInput {
+  for (const [name, value] of [
+    ['maxClaudeRuns', limits.maxClaudeRuns],
+    ['maxCodexRuns', limits.maxCodexRuns],
+    ['maxClarificationRounds', limits.maxClarificationRounds],
+    ['maxReviewRounds', limits.maxReviewRounds],
+  ] as const) {
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new OrchestrationError('VALIDATION_FAILED', `${name} must be a positive integer.`);
+    }
+  }
+  for (const [name, value] of [
+    ['claudeTokenCeiling', limits.claudeTokenCeiling],
+    ['codexTokenCeiling', limits.codexTokenCeiling],
+  ] as const) {
+    if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) {
+      throw new OrchestrationError(
+        'VALIDATION_FAILED',
+        `${name} must be a positive safe integer or null.`,
+      );
+    }
+  }
+  return { ...limits };
 }
 
 function formatTests(passed: boolean | null): string {

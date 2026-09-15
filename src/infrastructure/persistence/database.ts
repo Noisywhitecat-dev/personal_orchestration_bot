@@ -82,6 +82,15 @@ const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX task_events_task_idx ON task_events(task_id, seq);
   `,
+  // v2 — M15 persisted clarification progress and per-task execution limits.
+  `
+  ALTER TABLE tasks ADD COLUMN clarification_round INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE tasks ADD COLUMN max_clarification_rounds INTEGER NOT NULL DEFAULT 3;
+  ALTER TABLE tasks ADD COLUMN max_claude_runs INTEGER NOT NULL DEFAULT 6;
+  ALTER TABLE tasks ADD COLUMN max_codex_runs INTEGER NOT NULL DEFAULT 3;
+  ALTER TABLE tasks ADD COLUMN claude_token_ceiling INTEGER;
+  ALTER TABLE tasks ADD COLUMN codex_token_ceiling INTEGER;
+  `,
 ];
 
 export function openDatabase(path: string): DatabaseSync {
