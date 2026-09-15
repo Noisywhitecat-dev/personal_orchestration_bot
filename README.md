@@ -34,7 +34,18 @@ Both AI adapters default to **fake** so the whole flow runs without any CLI. Rea
 | `CODEX_ADAPTER`                                                     | `fake` (default) / `cli` | `cli` runs `codex exec` with `--sandbox workspace-write`                                                                                                                                                                          |
 | `CODEX_EXECUTABLE`, `CODEX_TIMEOUT_MS`, `CODEX_SKIP_GIT_REPO_CHECK` |                          | see `.env.example`                                                                                                                                                                                                                |
 
-No API keys are read from `.env`. The Claude adapter has been validated against one real planning run (claude 2.1.260): plan mode left the project untouched and returned a schema-valid plan. The Codex adapter is still stub-tested only. Note that each live Claude planning run also writes its own plan document under `~/.claude/plans/`.
+No API keys are read from `.env`.
+
+Validation scope so far:
+
+| Path                                | Status                                                                                                     |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Claude `plan` start                 | **live-validated** (claude 2.1.260): plan mode left the project untouched and returned a schema-valid plan |
+| Claude `review`, `--resume`         | implemented, stub-tested only                                                                              |
+| Codex start / resume                | implemented, stub-tested only — live validation is the next milestone (`docs/CODEX_NEXT_TASK.md`)          |
+| Full plan → implement → review loop | works end-to-end against the fake adapters; not yet run with both real CLIs                                |
+
+Each live Claude planning run also writes its own plan document under `~/.claude/plans/`.
 
 ### Review diff
 
