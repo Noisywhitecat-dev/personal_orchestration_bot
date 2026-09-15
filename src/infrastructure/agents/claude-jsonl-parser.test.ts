@@ -193,7 +193,8 @@ describe('ClaudeJsonlParser: structured results', () => {
     const { events } = parseFixture('no-usage.jsonl', 'plan');
     expect(types(events)).toEqual(['session_started', 'usage_reported', 'run_completed']);
     expect(usage(events)).toMatchObject({ source: 'unavailable', totalTokens: null });
-    expect(completed(events).kind === 'plan' && completed(events).title).toBe('Fenced plan');
+    const plan = completed(events);
+    expect(plan.kind === 'plan' && plan.title).toBe('Fenced plan');
   });
 
   it('empty steps → AGENT_RESULT_INVALID even though prose is present', () => {

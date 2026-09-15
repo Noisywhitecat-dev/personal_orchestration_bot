@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { Orchestrator } from '../application/orchestrator.js';
 import { systemClock } from '../domain/ports.js';
 import type { AgentAdapter } from '../infrastructure/agents/agent-adapter.js';
+import {
+  CLAUDE_PERMISSION_MODE,
+  ClaudeCliAdapter,
+} from '../infrastructure/agents/claude-cli-adapter.js';
 import { CodexCliAdapter } from '../infrastructure/agents/codex-cli-adapter.js';
 import { FakeClaudeAdapter } from '../infrastructure/agents/fake-claude-adapter.js';
 import { FakeCodexAdapter } from '../infrastructure/agents/fake-codex-adapter.js';
@@ -13,14 +17,49 @@ import { openDatabase } from '../infrastructure/persistence/database.js';
 import { createSqliteRepositories } from '../infrastructure/persistence/sqlite-repositories.js';
 import { createApp } from './app.js';
 
-// Entry point. Wires SQLite + adapters. Claude is always the fake adapter for now;
-// Codex is selected with CODEX_ADAPTER=fake|cli (default fake).
+// Entry point. Wires SQLite + adapters. Both adapters default to fake:
+//   CLAUDE_ADAPTER=fake|cli   (cli = local Claude Code CLI, read-only permission-mode plan)
+//   CODEX_ADAPTER=fake|cli
 
 const port = Number(process.env['PORT'] ?? 3080);
 const dbPath = resolve(process.env['DATABASE_PATH'] ?? './data/orchestration.db');
 const maxReviewRounds = Number(process.env['MAX_REVIEW_ROUNDS'] ?? 2);
 
 const ids = { next: () => randomUUID() };
+
+/** Positive integer from env, or the fallback when unset. Throws on anything else. */
+function positiveIntEnv(name: string, fallback: number | undefined): number | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0)
+    throw new Error(`Invalid ${name}: "${raw}" (positive integer expected)`);
+  return n;
+}
+
+function selectClaudeAdapter(): { adapter: AgentAdapter; label: string } {
+  const mode = process.env['CLAUDE_ADAPTER'] ?? 'fake';
+  if (mode === 'fake') return { adapter: new FakeClaudeAdapter(systemClock, ids), label: 'fake' };
+  if (mode === 'cli') {
+    const executable = process.env['CLAUDE_EXECUTABLE'] ?? 'claude';
+    const timeoutMs = positiveIntEnv('CLAUDE_TIMEOUT_MS', 10 * 60 * 1000) as number;
+    // Only forwarded as --max-turns when set: claude 2.1.260 --help does not list the flag.
+    const maxTurns = positiveIntEnv('CLAUDE_MAX_TURNS', undefined);
+    const adapter = new ClaudeCliAdapter({
+      executable,
+      clock: systemClock,
+      timeoutMs,
+      ...(maxTurns !== undefined ? { maxTurns } : {}),
+      log: (line) => console.log(line),
+    });
+    const turns = maxTurns !== undefined ? `, max-turns=${maxTurns}` : '';
+    return {
+      adapter,
+      label: `cli (${executable}, permission-mode=${CLAUDE_PERMISSION_MODE} read-only, timeout=${timeoutMs}ms${turns})`,
+    };
+  }
+  throw new Error(`Invalid CLAUDE_ADAPTER="${mode}". Expected "fake" or "cli".`);
+}
 
 function selectCodexAdapter(): { adapter: AgentAdapter; label: string } {
   const mode = process.env['CODEX_ADAPTER'] ?? 'fake';
@@ -47,12 +86,13 @@ function selectCodexAdapter(): { adapter: AgentAdapter; label: string } {
   throw new Error(`Invalid CODEX_ADAPTER="${mode}". Expected "fake" or "cli".`);
 }
 
+const claude = selectClaudeAdapter();
 const codex = selectCodexAdapter();
 const db = openDatabase(dbPath);
 const orchestrator = new Orchestrator({
   clock: systemClock,
   ids,
-  claude: new FakeClaudeAdapter(systemClock, ids),
+  claude: claude.adapter,
   codex: codex.adapter,
   repos: createSqliteRepositories(db),
   maxReviewRounds,
@@ -72,7 +112,7 @@ const staticDir = candidates.find((d) => existsSync(resolve(d, 'index.html')));
 const server = createApp({ orchestrator, ...(staticDir ? { staticDir } : {}) });
 server.listen(port, () => {
   console.log(`[server] listening on http://localhost:${port} (db: ${dbPath})`);
-  console.log(`[server] adapters: claude=fake codex=${codex.label}`);
+  console.log(`[server] adapters: claude=${claude.label} codex=${codex.label}`);
   if (!staticDir)
     console.log('[server] UI not built; use `npm run dev:web` for the Vite dev server.');
 });
