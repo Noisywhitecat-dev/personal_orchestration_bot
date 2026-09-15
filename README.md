@@ -36,6 +36,10 @@ Both AI adapters default to **fake** so the whole flow runs without any CLI. Rea
 
 No API keys are read from `.env`. Neither real CLI has been exercised end-to-end yet; both adapters are verified against Node stubs that replay JSONL fixtures.
 
+### Review diff
+
+After every Codex implement/revise run the server collects a **read-only, bounded git diff** of the project working tree (tracked changes against `HEAD` plus untracked text files) and embeds it in the Claude review prompt as untrusted data. `REVIEW_DIFF_MAX_BYTES` (default 65536) caps it. The diff exists only inside that one prompt: it is never written to SQLite, the timeline, SSE or logs. `.git/`, `node_modules/`, `dist/`, `.env*` (except `.env.example`), key/credential files and binaries are excluded (paths only). The snapshot is the current working tree, so pre-existing local edits may be mixed in with Codex's changes; nothing is staged, stashed or reset.
+
 ## Documents
 
 | File                                               | Purpose                                           |

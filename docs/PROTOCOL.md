@@ -108,6 +108,16 @@ interface UsageRecord {
 
 Aggregates (`UsageSummary`) are computed from records and report `hasEstimated` / `hasUnavailable` flags so the UI can label them.
 
+## Review context (ephemeral)
+
+After a successful `implement` / `revise` run the orchestrator asks a `ReviewContextCollector` for a bounded snapshot of the working tree (git: `status --porcelain -z`, `diff --no-ext-diff --no-textconv --no-color --relative HEAD -- :(literal)path…`, plus untracked text files read directly). The result is embedded into the next review prompt between `<<<BEGIN_UNTRUSTED_REVIEW_CONTEXT>>>` / `<<<END_UNTRUSTED_REVIEW_CONTEXT>>>` markers together with the task, plan, implementation report and previous review rounds.
+
+- The diff is **not** an `AgentEvent` and is **not** persisted anywhere (no Task/Run/Message/TaskEvent/usage/SSE/log). It exists only inside that one prompt string.
+- A fresh snapshot is collected for every round; nothing from an earlier round is reused.
+- Collection failures (not a git repo, git error, collector disabled) yield `unavailable`; the review still runs and the prompt says so. Truncation and omitted files (sensitive, binary, excluded dirs, outside root, symlink, too large) are stated explicitly.
+- If the task is cancelled while collecting, no review run is started and the task ends `cancelled`.
+- The snapshot describes the current working tree, not proven authorship; the implementer's `changedFiles` only narrow the scope.
+
 ## Review loop bound
 
 `Task.reviewRound` increments each time a review completes. If the verdict is `request_changes` and `reviewRound >= task.maxReviewRounds`, the task fails with `REVIEW_ROUNDS_EXCEEDED` and the user is notified.
