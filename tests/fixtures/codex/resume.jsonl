@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread-abc-123"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"Applied the requested change."}}
+{"type":"item.completed","item":{"id":"f1","type":"file_change","changes":[{"path":"src/header.tsx","kind":"update"}]}}
+{"type":"turn.completed","usage":{"input_tokens":600,"cached_input_tokens":500,"output_tokens":90,"total_tokens":690}}

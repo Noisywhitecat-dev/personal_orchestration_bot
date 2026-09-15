@@ -1,0 +1,10 @@
+Codex CLI v0.154.0 — starting
+warning: something informational
+{"type":"thread.started","thread_id":"thread-garbage"}
+{not valid json at all
+{"type":"some.future.event","payload":{"x":1}}
+{"type":"item.completed","item":{"id":"u1","type":"web_search","query":"x"}}
+[1,2,3]
+{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"Survived the noise."}}
+
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}

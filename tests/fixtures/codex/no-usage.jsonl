@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"thread-nousage"}
+{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"Done without usage."}}
+{"type":"turn.completed"}

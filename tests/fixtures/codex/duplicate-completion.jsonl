@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"thread-dup"}
+{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"First completion."}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}
+{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"Should be ignored."}}
+{"type":"turn.completed","usage":{"input_tokens":99,"output_tokens":99,"total_tokens":198}}
+{"type":"error","message":"also ignored"}

@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"thread-err"}
+{"type":"item.completed","item":{"id":"m1","type":"agent_message","text":"Starting."}}
+{"type":"error","message":"Rate limit exceeded"}
+{"type":"item.completed","item":{"id":"m2","type":"agent_message","text":"This must be ignored after the error."}}
+{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}
