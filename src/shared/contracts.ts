@@ -70,8 +70,21 @@ export function toPublicRun(run: DomainRun): Run {
 
 /** Also sanitizes legacy v1 timeline rows that persisted the actual session id. */
 export function toPublicTaskEvent(event: TaskEvent): TaskEvent {
-  if (event.type !== 'session_started') return event;
-  return { ...event, payload: { sessionPresent: true } };
+  if (event.type === 'session_started') {
+    return { ...event, payload: { sessionPresent: true } };
+  }
+  if (event.type === 'command_completed') {
+    const { stdoutTail, stderrTail, ...safe } = event.payload;
+    return {
+      ...event,
+      payload: {
+        ...safe,
+        ...(typeof stdoutTail === 'string' ? { stdoutPresent: stdoutTail.length > 0 } : {}),
+        ...(typeof stderrTail === 'string' ? { stderrPresent: stderrTail.length > 0 } : {}),
+      },
+    };
+  }
+  return event;
 }
 
 export interface ApiError {

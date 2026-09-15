@@ -11,7 +11,7 @@ A personal, local-first orchestration program that lets **Claude Code** and **Co
 
 ## Status
 
-The local-first product flow is implemented, including multi-round clarification, task-level run/token budgets, restart-safe persistence, runtime diagnostics, and the responsive web UI. Deterministic fake adapters remain the default; real CLIs are opt-in. Automated and browser acceptance pass. The final uninterrupted live three-call acceptance is still open because Claude Code 2.1.260 rejected two successive planning schema variants under the fixed call/retry budget; see [docs/STATUS.md](docs/STATUS.md).
+The personal local MVP is complete. It includes multi-round clarification, task-level run/token budgets, restart-safe persistence, runtime diagnostics, and the responsive web UI. Deterministic fake adapters remain the default; real CLIs are opt-in. Automated and browser acceptance pass. A fresh SQLite v3 run also completed the uninterrupted real Claude plan → Codex implement → exact-session Claude review flow, with all three child exit codes captured and no command output or diff retained in storage; see [docs/STATUS.md](docs/STATUS.md).
 
 ## Quick start
 
@@ -40,14 +40,14 @@ No API keys are read from `.env`.
 
 Validation scope so far:
 
-| Path                                | Status                                                                                                                                                                                                                                                                                            |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Claude `plan` start                 | **live-validated** on Claude Code 2.1.260                                                                                                                                                                                                                                                         |
-| Claude `review` start               | **live-validated** with a bounded diff in M12                                                                                                                                                                                                                                                     |
-| Claude `review --resume`            | **live-validated** in M14 with the exact stored M13 plan session                                                                                                                                                                                                                                  |
-| Codex start / resume                | **live-validated** on codex-cli 0.154.0-alpha.6.2; an incomplete explicitly selected Windows runtime fails before invocation                                                                                                                                                                      |
-| Bounded review diff                 | **live-validated** in M12 and through the M14 continuation; prompt/diff remain memory-only                                                                                                                                                                                                        |
-| Full plan → implement → review loop | deterministic fake loop and browser acceptance are complete; M13+M14 form a cumulative live continuation. M15's uninterrupted live retry stopped at planning after the provider rejected top-level schema composition; the now-flat compatible schema is regression-tested but not live-retested. |
+| Path                                | Status                                                                                                                                                                                                                                               |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude `plan` start                 | **live-validated** on Claude Code 2.1.260                                                                                                                                                                                                            |
+| Claude `review` start               | **live-validated** with a bounded diff in M12                                                                                                                                                                                                        |
+| Claude `review --resume`            | **live-validated** in M14 with the exact stored M13 plan session                                                                                                                                                                                     |
+| Codex start / resume                | **live-validated** on codex-cli 0.154.0-alpha.6.2; an incomplete explicitly selected Windows runtime fails before invocation                                                                                                                         |
+| Bounded review diff                 | **live-validated** in M12 and through the M14 continuation; prompt/diff remain memory-only                                                                                                                                                           |
+| Full plan → implement → review loop | **complete** — deterministic fake/browser loops pass, and a fresh v3 real three-call flow completed with exact Claude session reuse, review approval, three child exit codes of 0, DB reopen equality, and no persisted command tail or diff marker. |
 
 M15 also live-validated cancellation, timeout, and a Codex `workspace-write` attempt against a non-temporary sibling directory. The attempted outside file was absent and both sentinels and repositories remained unchanged. An earlier `%TEMP%` target was intentionally discarded as invalid evidence because the runtime permits writes there.
 
@@ -66,7 +66,7 @@ After every Codex implement/revise run the server collects a **read-only, bounde
 | [docs/PROTOCOL.md](docs/PROTOCOL.md)               | Task state machine, agent events, usage model    |
 | [docs/ROADMAP.md](docs/ROADMAP.md)                 | Milestones                                       |
 | [docs/STATUS.md](docs/STATUS.md)                   | Current progress, verification log, known issues |
-| [docs/CODEX_NEXT_TASK.md](docs/CODEX_NEXT_TASK.md) | Current bounded validation task                  |
+| [docs/CODEX_NEXT_TASK.md](docs/CODEX_NEXT_TASK.md) | Completion handoff and future-task boundary      |
 | [AGENTS.md](AGENTS.md)                             | Rules for Codex when working in this repo        |
 | [CLAUDE.md](CLAUDE.md)                             | Rules for Claude Code when working in this repo  |
 

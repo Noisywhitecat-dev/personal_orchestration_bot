@@ -76,6 +76,18 @@ describe('HTTP API', () => {
       createdAt: '2026-09-16T00:00:00.000Z',
     } as unknown as TaskEvent;
     expect(toPublicTaskEvent(legacy).payload).toEqual({ sessionPresent: true });
+
+    const legacyCommand = {
+      ...legacy,
+      type: 'command_completed',
+      payload: { commandId: 'command', exitCode: 0, stdoutTail: 'diff body', stderrTail: '' },
+    };
+    expect(toPublicTaskEvent(legacyCommand).payload).toEqual({
+      commandId: 'command',
+      exitCode: 0,
+      stdoutPresent: true,
+      stderrPresent: false,
+    });
   });
 
   it('reports token-free runtime status without private paths or secrets', async () => {
@@ -190,6 +202,9 @@ describe('HTTP API', () => {
     expect(detail.body.timeline.find((event) => event.type === 'session_started')?.payload).toEqual(
       { sessionPresent: true },
     );
+    const command = detail.body.timeline.find((event) => event.type === 'command_completed');
+    expect(command?.payload).toMatchObject({ exitCode: 0, stdoutPresent: true });
+    expect(JSON.stringify(command?.payload)).not.toContain('Tests: 3 passed');
 
     const proj = await get<ProjectDetailResponse>(`/api/projects/${projectId}`);
     expect(proj.body.tasks).toHaveLength(1);

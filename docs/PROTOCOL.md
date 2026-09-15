@@ -64,6 +64,11 @@ Every adapter emits `AgentEvent` values with a common envelope `{ type, runId, t
 
 Provider-specific JSON (Codex JSONL, Claude stream-json) is parsed inside the adapter and never reaches domain/application.
 
+`stdoutTail` / `stderrTail` exist only at this normalized in-memory boundary so parsers can classify
+commands and failures. The orchestrator persists only the command id, exit code, and whether each
+stream had content. Migration v3 removes legacy tails; the public DTO applies the same redaction as
+defense in depth.
+
 ## AgentAdapter interface
 
 ```ts
