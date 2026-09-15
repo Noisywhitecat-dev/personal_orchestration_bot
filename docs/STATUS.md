@@ -66,6 +66,10 @@ made: calls 7–8 are insufficient for a three-call run, and using either as a r
 task's non-transient retry rule. The preserved M15 throwaways are identified by the non-sensitive
 leaf names `orchestration-m15-live-TOeuEv` and `orchestration-m15-live-JCH6kH`.
 
+The safe observer retained each call's duration, normalized event sequence, usage, and terminal
+result, but not the child process's OS exit code; both outer harness runs exited 0. No child exit code
+is inferred from that wrapper result. The remaining live acceptance must retain this field explicitly.
+
 ## Completed milestones
 
 | Milestone                               | Status                                                                                                 |

@@ -28,7 +28,9 @@ Only after a new explicit user approval for at least three real calls:
 4. Require terminal `completed`, exact-session reuse by boolean only, independent DB reopen equality,
    passing throwaway tests, unchanged sentinel/product repository, and no prompt/diff/session/raw
    output in persisted or committed files.
-5. Do not retry a failed call. Delete the ignored one-off harness and any raw capture, preserve the
+5. Record each child process exit code alongside duration, normalized event types, terminal result,
+   and usage in the field-whitelisted observer. Do not infer child exit from the outer harness.
+6. Do not retry a failed call. Delete the ignored one-off harness and any raw capture, preserve the
    throwaway, update M15 documentation to 100%, then run the full suite again.
 
 ## Current verified baseline
