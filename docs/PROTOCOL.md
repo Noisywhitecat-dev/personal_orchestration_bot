@@ -75,9 +75,24 @@ interface AgentAdapter {
 
 ## Structured agent results
 
-- Plan: `{ kind: 'plan', title, summary, steps: string[] }`
+- Plan: `{ kind: 'plan', title, summary, steps: string[] }` — `steps` must be non-empty
 - Implementation: `{ kind: 'implementation', summary, changedFiles: string[], testsPassed: boolean | null }`
-- Review: `{ kind: 'review', verdict: 'approve' | 'request_changes', summary, changeRequests: string[] }`
+- Review: `{ kind: 'review', verdict: 'approve' | 'request_changes', summary, changeRequests: string[] }` — `request_changes` requires at least one change request
+
+### Claude stream-json boundary
+
+`ClaudeCliAdapter` runs `claude --print --output-format stream-json --verbose --permission-mode plan --permission-prompts none --json-schema <schema>` and `claude-jsonl-parser.ts` maps the provider lines to the normalized events above:
+
+| Claude line                                | AgentEvent                                                                          |
+| ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `system`/`init` with `session_id`          | `session_started` (suppressed if it repeats a known id)                             |
+| `assistant` text block                     | `message_delta` (whole block; partial messages are not requested)                   |
+| `assistant` thinking block                 | `reasoning_delta`                                                                   |
+| `result` usage                             | `usage_reported` (`actual`; `unavailable` when absent) — always before the terminal |
+| `result` success + valid structured output | `run_completed`                                                                     |
+| `result` error / `error_*` subtype         | `run_failed` (`CLAUDE_ERROR`)                                                       |
+
+The plan/review result is taken from `structured_output`, else from a `result` string that is JSON or a single ```json fence. It is validated with a zod schema for the run kind (the same shape is passed as `--json-schema`). Anything else — missing fields, wrong `kind`, empty `steps`, bad `verdict`, `request_changes` without requests, prose — fails the run with `AGENT_RESULT_INVALID`. No default plan and no automatic approval is ever synthesized. The adapter supports only `plan` and `review`; `implement`/`revise` fail with `UNSUPPORTED_KIND` without spawning.
 
 ## Usage
 
