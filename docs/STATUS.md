@@ -1,21 +1,22 @@
 # STATUS
 
-Last updated: 2026-09-15 (session 5 — git diff capture for review input, Claude Code)
+Last updated: 2026-09-15 (session 6 — live Claude planning validation, Claude Code)
 
 ## Completed milestones
 
-| Milestone                            | Status                                                                |
-| ------------------------------------ | --------------------------------------------------------------------- |
-| M0 Repo contract                     | Done                                                                  |
-| M1 Domain + state machine            | Done                                                                  |
-| M2 Fake adapters + orchestrator      | Done                                                                  |
-| M3 SQLite + HTTP API + SSE           | Done                                                                  |
-| M4 Minimal React UI                  | Done (flow verified in browser)                                       |
-| M5 `docs/CODEX_NEXT_TASK.md`         | Done                                                                  |
-| M6 Real Codex CLI adapter            | Done (stub-tested; not yet run against the real CLI)                  |
-| M7 Asynchronous planning             | Done (POST /api/requests returns 202 + draft; planning in background) |
-| $1                                   |
-| M9 Git diff capture for review input | Done (temp-git-repo + fake-adapter tested; no live run)               |
+| Milestone                            | Status                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------- |
+| M0 Repo contract                     | Done                                                                               |
+| M1 Domain + state machine            | Done                                                                               |
+| M2 Fake adapters + orchestrator      | Done                                                                               |
+| M3 SQLite + HTTP API + SSE           | Done                                                                               |
+| M4 Minimal React UI                  | Done (flow verified in browser)                                                    |
+| M5 `docs/CODEX_NEXT_TASK.md`         | Done                                                                               |
+| M6 Real Codex CLI adapter            | Done (stub-tested; not yet run against the real CLI)                               |
+| M7 Asynchronous planning             | Done (POST /api/requests returns 202 + draft; planning in background)              |
+| M8 Real Claude Code CLI adapter      | Done (stub-tested; no live run)                                                    |
+| M9 Git diff capture for review input | Done (temp-git-repo + fake-adapter tested; no live run)                            |
+| M10 Live Claude planning validation  | Done (2 approved live calls: 1 auth failure + 1 successful plan on claude 2.1.260) |
 
 ## Current state
 
@@ -25,17 +26,19 @@ Real CLI adapters exist for both roles: `CodexCliAdapter` behind `CODEX_ADAPTER=
 
 Review prompts now carry a bounded, read-only git diff of the working tree (session 5); it is memory-only and never persisted.
 
+Session 6 made **two** user-approved live `claude.exe` invocations (2.1.260) on a throwaway repository. The first failed at the API step (the standalone CLI was logged out); after the user ran `claude auth login`, the second **produced a valid structured plan**. Both captures were sanitized into fixtures and the parser handled both without code changes to its invariants. Codex has still never been run live.
+
 ## Verification log
 
 | Command                                                 | Result                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                              | 15 files, 179 tests passed (142 → 179: +23 git collector, +14 orchestrator review context / prompt)                                                                                                                                                                                                                           |
+| `npm test`                                              | 15 files, 186 tests passed (179 → 186: +3 live auth-error tests, +4 live successful-plan tests)                                                                                                                                                                                                                               |
 | `npm run typecheck`                                     | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
 | `npm run lint`                                          | clean                                                                                                                                                                                                                                                                                                                         |
 | `npx prettier --check .`                                | clean                                                                                                                                                                                                                                                                                                                         |
 | `npm run build`                                         | server → `dist/server`, web → `dist/web`                                                                                                                                                                                                                                                                                      |
 | Startup check (review diff, `node dist/server/main.js`) | unset → `review diff: git, max 65536 bytes, memory-only`; `REVIEW_DIFF_MAX_BYTES=4096` → `max 4096`; `0`, `-1`, `abc`, `1.5` → process exits with `Invalid REVIEW_DIFF_MAX_BYTES`                                                                                                                                             |
-| Startup check (Claude, `node dist/server/main.js`)      | `CLAUDE_ADAPTER` unset → `claude=fake`; `=cli` → `claude=cli (claude, permission-mode=plan read-only, timeout=600000ms, max-turns=8)`; `=bogus`, `CLAUDE_MAX_TURNS=0`, `CLAUDE_TIMEOUT_MS=abc` → process exits with `Invalid CLAUDE_*`                                                                                        |
+| Startup check (Claude, `node dist/server/main.js`)      | `CLAUDE_ADAPTER` unset → `claude=fake`; `=cli` → `claude=cli (claude, permission-mode=plan read-only, timeout=600000ms)`; `max-turns=N` is appended only when `CLAUDE_MAX_TURNS` is set (checked with `CLAUDE_MAX_TURNS=8`); `=bogus`, `CLAUDE_MAX_TURNS=0`, `CLAUDE_TIMEOUT_MS=abc` → process exits with `Invalid CLAUDE_*`  |
 | Startup check (`node dist/server/main.js`)              | `CODEX_ADAPTER` unset → `codex=fake`; `=cli` → `codex=cli (<exe>, sandbox=workspace-write, timeout=900000ms)`; `=bogus` → process exits with `Invalid CODEX_ADAPTER`                                                                                                                                                          |
 | Manual (browser, `npm start`)                           | Registered this repo, submitted `... [fake-changes:1]`, approved; observed implement → review(changes) → revise → review(approve) → completed; round 2/2; Claude usage tagged _estimated_, Codex _actual_; reload and server restart restored state (`/api/projects/:id` showed `completed round=2`, claude=920, codex=2050). |
 
@@ -50,6 +53,47 @@ Review prompts now carry a bounded, read-only git diff of the working tree (sess
 - **Vite 6 / Vitest 3** instead of Vite 5 / Vitest 2: Vite 5's builtin list does not know `node:sqlite`, so tests failed to resolve it. Upgrading was cleaner than a resolver workaround.
 - **Fake adapters** are deterministic. FakeClaude: plan usage `actual`, review usage `estimated`; `[fake-changes:N]` in the request forces N change-request rounds. FakeCodex: `[fake-fail]` forces `run_failed`.
 - **Project root** validation (absolute + `realpath` + must exist) happens in `src/server/routes/api.ts`, keeping `application/` free of `fs`.
+
+## Live Claude planning validation (session 6, M10)
+
+### What ran
+
+- Exactly **2** live `claude.exe` invocations (each individually user-approved), **0** Codex invocations, no resume, no review. Call 1 failed on authentication; after the user logged the CLI in, call 2 succeeded.
+- Executable: version `2.1.260 (Claude Code)`. **Path depends on the caller**: the Claude desktop app is an MSIX package, so inside it the binary resolves as `%APPDATA%\Claude\claude-code\2.1.260\claude.exe`, while an ordinary shell must use the real location `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude-code\2.1.260\claude.exe`. Set `CLAUDE_EXECUTABLE` accordingly. Auth (`claude auth login`, `claude auth status`) is stored in `~/.claude/.credentials.json`, which is not virtualized, so both paths share one login. `--help` re-checked: `--print`, `--output-format stream-json`, `--verbose`, `--permission-mode plan`, `--permission-prompts none`, `--json-schema`, `--resume`, `--model` present; **`--max-turns` absent** (not passed).
+- argv exactly as `buildClaudeStartArgs({ kind: 'plan' })`: `--print --output-format stream-json --verbose --permission-mode plan --permission-prompts none --json-schema <plan schema>`. Prompt (417 bytes, no secrets/project data) on stdin. Env = the production allowlist only. cwd = a throwaway git repo (one README, local git config only) under the temp directory.
+- One-off harness (untracked, scratchpad) reused the production argv builder, `runProcess` and `ClaudeJsonlParser`, tee-ing stdout to a git-ignored `data/live-captures/*.raw.jsonl` (deleted after sanitization; `data/live-captures/` added to `.gitignore`).
+
+### Result — call 1 (auth failure)
+
+- Exit 1 after 1.9 s. stdout: 3 JSONL lines (`system/init`, `assistant`, `result`), stderr empty.
+- `system/init`: `session_id` is a UUID; `permissionMode: "plan"` echoed; `apiKeySource: "none"`; `model`, `claude_code_version`, `tools[]`, plus machine-specific fields (`cwd`, `memory_paths`, `messaging_socket_path`, `powershell_path`) that must never reach fixtures.
+- `assistant`: `message.content: [{type:"text", text}]`, `message.usage` (nested shape), top-level `error: "authentication_failed"`, `is_api_error_message: true`, same `session_id`.
+- `result`: **`subtype: "success"` yet `is_error: true`**, `terminal_reason: "api_error"`, `api_error_status: null`, no `errors` array, no `structured_output`, message in `result`, `num_turns: 1`, `permission_denials: []`. `usage` is nested: `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens`, `output_tokens_details.thinking_tokens`, `cache_creation.{ephemeral_1h_input_tokens, ephemeral_5m_input_tokens}`, `server_tool_use`, `service_tier`, `speed`, … (all zero here). `modelUsage: {}`.
+- Parser (unchanged code) produced `session_started > message_delta > usage_reported > run_failed(CLAUDE_ERROR)`; unknown = 0, malformed = 0, one terminal, usage before terminal. No default plan was synthesized.
+- Throwaway repository unchanged: `git status --porcelain` empty before and after, README SHA-256 identical, HEAD identical.
+- Root cause (offline check, no token values read): `~/.claude/.credentials.json` has empty `accessToken`/`refreshToken` and `expiresAt: 0` — the standalone CLI is logged out on this machine. The desktop app that hosts the Claude Code session uses separate auth. Whether the env allowlist would also matter once logged in is still unknown.
+
+### Result — call 2 (successful plan)
+
+- Exit 0 after 17.8 s. stdout: **23** JSONL lines: `system/init` ×1, `system/thinking_tokens` ×7, `rate_limit_event` ×3, `assistant` ×7, `user` (tool results) ×4, `result/success` ×1. stderr empty.
+- `result`: `is_error: false`, `terminal_reason: "completed"`, `stop_reason: "tool_use"`, `num_turns: 5`, `permission_denials: []`, and **`structured_output` present** and schema-valid. The same JSON is also duplicated in the `result` string.
+- **`--json-schema` works**: the model produced the answer by calling an internal `StructuredOutput` tool; the run contained **no `text` content blocks at all**, and `thinking` blocks carried an empty string plus a `signature`. So a successful schema-driven run can legitimately emit no `message_delta` and no `reasoning_delta` — the parser must not require them (it does not).
+- Real usage: `input_tokens: 8`, `cache_creation_input_tokens: 36425`, `cache_read_input_tokens: 105666`, `output_tokens: 1058`, `output_tokens_details.thinking_tokens: 346`. Mapped to `inputTokens 142099 / cachedInputTokens 105666 / outputTokens 1058 / reasoningTokens 346 / totalTokens 143157`, `source: "actual"`.
+- Parser output: `session_started > usage_reported > run_completed` with a valid `plan` result, one terminal, usage before it, unknown = 0, malformed = 0.
+- **Plan mode held**: the throwaway repository was byte-identical before and after (`git status --porcelain` empty, README SHA-256 and HEAD unchanged) even though the model _did_ issue a `Write` tool call. That write went to Claude Code's own plan scratch file under `~/.claude/plans/`, i.e. outside the project root — **plan mode protects the workspace but the CLI still writes its own plan document into the user's home**. `permission_denials` stayed empty, so a denial is not how this surfaces.
+- `modelUsage` listed two models (a sonnet main model plus a small helper model). Top-level `usage` reflects only the main model, so the helper model's tokens are **not** counted in our snapshot (the parser prefers top-level `usage`, by design). This under-counts slightly; documented rather than changed.
+
+### Changes made from the capture
+
+- `tests/fixtures/claude/live-auth-error-v2.1.260.jsonl` (3 lines) and `tests/fixtures/claude/live-plan-v2.1.260.jsonl` (23 lines): field-whitelisted copies. Session ids → `sess-live-0001` / `sess-live-plan-0001`, uuids → fixed test uuids, tool inputs and tool results → `<redacted>`, cwd/paths/timings removed or replaced; field names, nesting, ordering and the usage numbers are real. 7 regression tests cover both.
+- `claude-jsonl-parser.ts` (3 small changes, invariants unchanged): `usage.output_tokens_details.thinking_tokens` → `reasoningTokens`; `terminal_reason` appended to the `CLAUDE_ERROR` message; `rate_limit_event` added to the known-ignored line types (it was being counted as unknown).
+
+### Still unverified
+
+- Resume (`--resume`), review runs, and the orchestrator's full implement → review loop against a live Claude.
+- Any live Codex run (the Codex adapter remains stub-tested only).
+- Whether long runs hit the timeout, and how a real permission denial surfaces (`permission_denials` was empty here).
+- Side effect to keep in mind: each live planning run leaves a plan markdown file in `~/.claude/plans/`.
 
 ## Review context / git diff capture (session 5)
 
@@ -140,7 +184,7 @@ resume: same + --resume <sessionId>
 - The stream-json shapes (`system.init`, `assistant.message.content[]`, `result.structured_output`, `result.usage`) follow the documented format but were **not** confirmed against live 2.1.260 output. First real run: capture stdout as `tests/fixtures/claude/live-*.jsonl` and adjust the parser header table if names differ.
 - Whether `--json-schema` populates `structured_output` on this version, and whether `--permission-mode plan` + `--permission-prompts none` completes without prompting, is unverified.
 - `--max-turns` support is unknown on 2.1.260 (absent from help); a wrong flag would make the CLI exit → surfaces as `CLAUDE_EXITED_WITHOUT_RESULT`.
-- Review prompts still carry no git diff; that is the next milestone and must not be solved by widening Claude's permissions.
+- Review prompts now include a bounded git diff (session 5, M9); Claude permissions were not widened for it.
 
 ## Asynchronous planning (session 3)
 
@@ -210,6 +254,14 @@ src/web/ index.html styles.css main.tsx api.ts pages/App.tsx components/UsageTab
 tests/integration/ orchestrator.test.ts persistence.test.ts api.test.ts
 ```
 
+Added in session 6:
+
+```
+tests/fixtures/claude/live-auth-error-v2.1.260.jsonl   (sanitized live capture, call 1)
+tests/fixtures/claude/live-plan-v2.1.260.jsonl         (sanitized live capture, call 2)
+.gitignore (data/live-captures/)
+```
+
 Added in session 5:
 
 ```
@@ -251,7 +303,6 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 
 ## Next exact work
 
-1. **Minimal live Claude planning test (user-supervised)**: `CLAUDE_ADAPTER=cli CLAUDE_EXECUTABLE=<path> npm start`, submit a trivial request; confirm `structured_output`, plan-mode behaviour, whether `--max-turns` exists. Capture stdout as `tests/fixtures/claude/live-*.jsonl`.
-2. **Minimal live Codex implement/resume test (user-supervised)**: `CODEX_ADAPTER=cli CODEX_EXECUTABLE=<path>` on a throwaway git repo; confirm resume sandbox and cwd. Capture stdout as `tests/fixtures/codex/live-*.jsonl`.
-3. Adjust the JSONL parsers to the live fixtures if event names differ.
-4. Then evaluate an explicitly gated emergency-repair path and/or packaging.
+1. **Minimal live Codex implement/resume test (user-supervised)** on a throwaway git repo: confirm the `exec` argv, the JSONL event names, resume sandbox/cwd behaviour, and usage. Sanitize into `tests/fixtures/codex/live-*.jsonl` and adjust the Codex parser if names differ.
+2. **Live Claude review run** (needs a real implementation to review): verify the review schema path and that the bounded diff fits the prompt.
+3. Then evaluate an explicitly gated emergency-repair path and/or packaging.
