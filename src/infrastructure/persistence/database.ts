@@ -91,12 +91,18 @@ const MIGRATIONS: readonly string[] = [
   ALTER TABLE tasks ADD COLUMN claude_token_ceiling INTEGER;
   ALTER TABLE tasks ADD COLUMN codex_token_ceiling INTEGER;
   `,
+  // v3 — command output may contain source, diffs, paths, or credentials. Keep only metadata.
+  `
+  UPDATE task_events
+  SET payload_json = json_remove(payload_json, '$.stdoutTail', '$.stderrTail')
+  WHERE type = 'command_completed' AND json_valid(payload_json);
+  `,
 ];
 
 export function openDatabase(path: string): DatabaseSync {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA secure_delete = ON;');
   migrate(db);
   return db;
 }
@@ -104,6 +110,7 @@ export function openDatabase(path: string): DatabaseSync {
 export function migrate(db: DatabaseSync): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
   let version = row.user_version;
+  const needsCommandOutputPurge = version < 3;
   while (version < MIGRATIONS.length) {
     const sql = MIGRATIONS[version];
     if (sql === undefined) break;
@@ -117,6 +124,11 @@ export function migrate(db: DatabaseSync): number {
       throw err;
     }
     version += 1;
+  }
+  if (needsCommandOutputPurge && version >= 3) {
+    // v3 removes potentially sensitive command tails. Compact once so old cell bytes and WAL pages
+    // cannot retain the removed text in the database file.
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);');
   }
   return version;
 }

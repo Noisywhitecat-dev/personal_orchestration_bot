@@ -680,8 +680,8 @@ export class Orchestrator {
         this.appendTimeline(task.id, run.id, event.type, {
           commandId: event.commandId,
           exitCode: event.exitCode,
-          stdoutTail: truncateText(event.stdoutTail ?? '', 2_000),
-          stderrTail: truncateText(event.stderrTail ?? '', 2_000),
+          stdoutPresent: Boolean(event.stdoutTail),
+          stderrPresent: Boolean(event.stderrTail),
         });
         return;
       case 'usage_reported': {

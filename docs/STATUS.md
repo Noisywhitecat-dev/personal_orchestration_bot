@@ -4,11 +4,12 @@ Last updated: 2026-09-16 (M15 final local MVP implementation and bounded accepta
 
 ## M15 authoritative status
 
-M15 is **95% complete for release acceptance, not 100%**. The defined product functionality is
-implemented, migrated, automated-tested, and browser-tested. Cancellation, timeout, and a valid
-non-temporary out-of-root Codex attempt were live-validated. The one remaining required gate is a
-new uninterrupted real `plan -> implement -> review -> completed` run after the final Claude
-planning-schema compatibility fix.
+M15 is **98% complete for release acceptance, not 100%**. The defined product functionality is
+implemented, migrated, automated-tested, and browser-tested. Cancellation, timeout, a valid
+non-temporary out-of-root Codex attempt, and one uninterrupted flat-schema
+`plan -> implement -> review -> completed` run were live-validated. That run exposed command stdout
+containing a diff in persistent timeline data. Migration v3 and new-event/public-boundary redaction
+fix it, but a fresh post-fix live run with explicit provider child exit codes remains required.
 
 ### Implemented
 
@@ -24,6 +25,8 @@ planning-schema compatibility fix.
 - `GET /api/runtime-status` is read-only/token-free. Public REST/SSE DTOs omit session identifiers;
   runtime paths, prompts, diffs, environment values, and credentials are not returned.
 - SQLite migration v2 adds the M15 task fields with defaults and preserves existing v1 rows.
+  Migration v3 removes legacy command stdout/stderr tails, uses secure deletion, and compacts once
+  so removed content does not remain in the DB or WAL.
 - Claude's planning JSON Schema is a flat top-level object. Claude Code 2.1.260 rejects both a root
   without `type` and root-level `oneOf`/`allOf`/`anyOf`; strict branch validation remains in zod.
 - Codex implementation/revision prompts repeat the registered-project-only write boundary. An
@@ -45,8 +48,9 @@ The token-free preflight passed immediately before the last attempt: Claude Code
 in with all required flags, and codex-cli 0.154.0-alpha.6.2 came from a complete Windows Desktop
 runtime containing all three required helpers. No private executable path or auth data was stored.
 
-Exactly **6 of the authorized 8** calls were used; two remain unused because they cannot complete the
-required three-call uninterrupted path and failed starts may not be retried.
+The original M15 authorization used 6 of 8 calls. After the user granted a new exact three-call
+budget, all three were used once with no retry. Total M15 calls are therefore **9 across two explicit
+authorizations**.
 
 | Call | Provider / scenario                              | Result                                                                                                                                             |
 | ---- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -56,19 +60,42 @@ required three-call uninterrupted path and failed starts may not be retried.
 | 4    | Codex permission probe using a `%TEMP%` sibling  | Provider completed and created the file; invalid denial evidence because temp is a writable sandbox exception. The exact created file was deleted. |
 | 5    | Claude corrected happy-path planning start       | Failed before plan: provider forbids top-level schema composition; actual usage 0                                                                  |
 | 6    | Codex permission probe outside temporary storage | Provider completed without creating the requested outside file; outside sentinel/repository/product state unchanged                                |
+| 7    | Claude flat-schema planning start                | Completed in 17,098 ms; plan session present; actual usage 106,688                                                                                 |
+| 8    | Codex implementation start                       | Completed in 26,765 ms; created only `greet.js` and `greet.test.js`; tests passed; actual usage 79,401                                             |
+| 9    | Claude exact-session review resume               | Completed in 16,961 ms; resume session matched call 7; approved round 1; actual usage 77,612                                                       |
 
-Actual M15 usage totals: Claude `0` (two zero-usage API failures; two other Claude records are
-`unavailable`), Codex input `96,322`, cached input `67,584`, output `818`, reasoning `268`, total
-`97,140`. Fake replay estimates are excluded. No raw provider capture is retained.
+Actual M15 usage totals: Claude input `182,387`, cached input `107,335`, output `1,913`, reasoning
+`441`, total `184,300` (plus two zero-usage API failures and two `unavailable` records); Codex input
+`174,982`, cached input `137,600`, output `1,559`, reasoning `386`, total `176,541`. Combined actual
+total is `360,841`. Fake replay estimates are excluded. No raw provider capture is retained.
 
-The final flat-schema fix and regression test were made after call 5. A new live attempt was not
-made: calls 7–8 are insufficient for a three-call run, and using either as a retry would violate the
-task's non-transient retry rule. The preserved M15 throwaways are identified by the non-sensitive
-leaf names `orchestration-m15-live-TOeuEv` and `orchestration-m15-live-JCH6kH`.
+Calls 7–9 used the production Orchestrator, SQLite repositories, adapters, parsers, process runner,
+and review-context collector in one process. Normalized sequences were:
+
+- plan: `session_started -> message_delta -> usage_reported -> run_completed`;
+- implement: `session_started -> message_delta -> command_started -> command_completed ->
+message_delta -> command_started -> command_completed -> message_delta -> usage_reported ->
+run_completed`;
+- review: `session_started -> usage_reported -> run_completed`.
+
+The task reached `completed`, review round 1 was `approve`, the exact planning session was reused,
+the DB close/reopen snapshot matched, independent `node --test` passed, Git status contained only
+the two expected files, and the initial fixture, sentinel, and product repository stayed unchanged.
+The preserved throwaway leaf is `orchestration-m15-final-tbJZwO` in addition to the two earlier M15
+throwaways.
+
+The post-run persistence check found two legacy command tail fields and one `diff --git` marker: a
+Codex command's stdout had been persisted as timeline content. Migration v3 was applied to the exact
+live DB; task `completed`, 3 runs, and 29 events remained, while logical tail/diff counts became zero.
+After secure-delete/VACUUM, the DB, WAL, and SHM byte scans also contained no tail keys or diff
+marker. New events now persist only exit/presence metadata, with public DTO redaction as a second
+shield. This behavior is fully tested offline but was not observed in a fresh post-fix model run.
 
 The safe observer retained each call's duration, normalized event sequence, usage, and terminal
-result, but not the child process's OS exit code; both outer harness runs exited 0. No child exit code
-is inferred from that wrapper result. The remaining live acceptance must retain this field explicitly.
+result, but a timing/parse defect left the provider child process records empty. The outer harness
+exited 1 because this postcondition and the newly discovered persistence condition failed; no child
+exit code is inferred from that aggregate exit. The remaining live acceptance must retain all three
+exit codes and prove a newly created v3 DB is clean without post-run repair.
 
 ## Completed milestones
 
@@ -89,7 +116,7 @@ is inferred from that wrapper result. The remaining live acceptance must retain 
 | M12 Live Claude review validation       | Done (one bounded-diff review start returned schema-valid `request_changes` on Claude Code 2.1.260)    |
 | M13 Live two-provider orchestrator loop | Partial (real plan and implement ran; review was correctly blocked by a newly observed parser gap)     |
 | M14 Exact-session review continuation   | Done (one real Claude resume approved the M13 two-file implementation; continuation task completed)    |
-| M15 Final local MVP                     | 95% — feature/offline/browser complete; one uninterrupted three-call live acceptance still required    |
+| M15 Final local MVP                     | 98% — uninterrupted real flow completed; fresh v3 persistence/child-exit evidence still required       |
 
 ## Current state
 
@@ -107,7 +134,7 @@ Verification status per path — this table is the authoritative summary; the pe
 | Codex `implement` start           | yes         | yes                                  | **yes** (codex-cli 0.154.0-alpha.6.2, session 9)                   |
 | Codex `revise` / resume           | yes         | yes                                  | **yes** (same session id, sandbox override + child cwd, session 9) |
 | Git review context (bounded diff) | yes         | yes (temp git repos + fake adapters) | **yes** (embedded in the live M12 review prompt)                   |
-| Orchestrator full loop            | yes         | yes (fake adapters)                  | **cumulative** (M13 plan+implement → M14 resumed review+complete)  |
+| Orchestrator full loop            | yes         | yes (fake adapters)                  | **yes** (M15 one-process plan → implement → exact-session review)  |
 
 Review prompts carry a bounded, read-only git diff of the working tree (session 5); it is memory-only and never persisted.
 
@@ -117,7 +144,7 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 
 | Command                                                 | Result                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                              | 18 files, 225 tests passed (M15 adds clarification, budgets, migration/recovery, public redaction, runtime status, SSE ordering, and UI-state regressions)                                                                                                                                                                    |
+| `npm test`                                              | 18 files, 226 tests passed (M15 adds clarification, budgets, migration/recovery, command-output purge/public redaction, runtime status, SSE ordering, and UI-state regressions)                                                                                                                                               |
 | `npm run typecheck`                                     | clean (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`)                                                                                                                                                                                                                                                      |
 | `npm run lint`                                          | clean                                                                                                                                                                                                                                                                                                                         |
 | `npx prettier --check .`                                | clean                                                                                                                                                                                                                                                                                                                         |
@@ -133,8 +160,8 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 - **Orchestrator** never writes `task.state` directly; only via `transition()`. Pipeline runs in the background after `approve()`; tests use `whenSettled(taskId)`.
 - **Recovery on startup** (`recoverInterrupted`): `queued` tasks restart; `draft` / `implementing` / `reviewing` tasks and their running runs are marked `failed` with `INTERRUPTED`. `draft` is **not** re-planned automatically (would spend tokens unasked). `awaiting_approval` is left as-is. Tasks with a live in-process pipeline are skipped.
 - **Usage**: raw `usage_records` rows; aggregates computed on read (`summarizeUsage`) with `hasEstimated` / `hasUnavailable` flags. Unknown = `null`.
-- **Timeline bounding**: `message_delta` coalesced into one `agent_message` entry per run (≤ 8 KB); `reasoning_delta` not persisted; command tails ≤ 2 KB.
-- **Persistence**: `node:sqlite` (`DatabaseSync`) — no native build, sync API, WAL. Version-based migrations via `PRAGMA user_version`. Repositories are synchronous by design.
+- **Timeline bounding**: `message_delta` coalesced into one `agent_message` entry per run (≤ 8 KB); `reasoning_delta` and command stdout/stderr are not persisted. Command completion keeps only id, exit code, and stream-presence booleans.
+- **Persistence**: `node:sqlite` (`DatabaseSync`) — no native build, sync API, WAL. Version-based migrations via `PRAGMA user_version`; v3 purges legacy command tails with secure-delete/checkpoint/VACUUM. Repositories are synchronous by design.
 - **Vite 6 / Vitest 3** instead of Vite 5 / Vitest 2: Vite 5's builtin list does not know `node:sqlite`, so tests failed to resolve it. Upgrading was cleaner than a resolver workaround.
 - **Fake adapters** are deterministic. FakeClaude: plan usage `actual`, review usage `estimated`; `[fake-changes:N]` in the request forces N change-request rounds. FakeCodex: `[fake-fail]` forces `run_failed`.
 - **Project root** validation (absolute + `realpath` + must exist) happens in `src/server/routes/api.ts`, keeping `application/` free of `fs`.
@@ -184,15 +211,15 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 
 ### Root cause and fail-fast runtime validation
 
-- Session 8 selected `C:\Users\Study\.codex\.sandbox-bin\codex.exe`. Its SHA-256 matched the Desktop runtime's CLI, but that directory lacked `codex-code-mode-host.exe`, `codex-command-runner.exe` and `codex-windows-sandbox-setup.exe`. The CLI therefore reached the model but all file operations failed closed. The parser correctly preserves its real usage and emits `run_failed(CODEX_ITEM_ERROR)` despite process exit 0 and `turn.completed`.
+- Session 8 selected `%USERPROFILE%\.codex\.sandbox-bin\codex.exe`. Its SHA-256 matched the Desktop runtime's CLI, but that directory lacked `codex-code-mode-host.exe`, `codex-command-runner.exe` and `codex-windows-sandbox-setup.exe`. The CLI therefore reached the model but all file operations failed closed. The parser correctly preserves its real usage and emits `run_failed(CODEX_ITEM_ERROR)` despite process exit 0 and `turn.completed`.
 - `CodexCliAdapter` now validates a Windows absolute `codex.exe` at construction time. The executable and all three sibling helpers must exist or configuration fails with `VALIDATION_FAILED` naming the selected executable and missing components, before `runProcess` or a model call. PATH-based `codex` and wrapper/stub executables are unaffected. No user path or private runtime hash is hardcoded, and the application does not auto-discover Desktop hash directories.
-- Live preflight explicitly selected `C:\Users\Study\AppData\Local\OpenAI\Codex\bin\12219cbfbcbddde7\codex.exe` through the harness's `CODEX_EXECUTABLE` equivalent. Version was `codex-cli 0.154.0-alpha.6.2`; the executable and all three helpers existed. The two CLI copies had identical SHA-256 `960C111D47AFD61669954B9DF9E56083E302EDBFA3EF6962D81DCC14A30051DC`.
+- Live preflight explicitly selected a dynamically discovered complete Codex Desktop runtime through the harness's `CODEX_EXECUTABLE` equivalent. Version was `codex-cli 0.154.0-alpha.6.2`; the executable and all three helpers existed. No private runtime path or hash directory is hard-coded by the product.
 
 ### Successful start and resume
 
 - After the runtime fix, the user approved exactly one new start and, only after success, one resume. Session 9 ran **one start and one resume**, with **zero retries** and **zero Claude calls**. Across M11's two separately approved attempts, there were two starts (one failed in session 8, one successful in session 9) and one successful resume.
-- Throwaway repository: `C:\Users\Study\AppData\Local\Temp\orchestration-m11-runtime-20260915-2245\repo`; sentinel: its parent `SENTINEL.txt`. The product repository was never passed as `-C`, `cwd` or prompt content. The one-off harness reused production argv builders, runtime preflight, `runProcess` (`shell:false`, timeout, `AbortSignal`) and `CodexJsonlParser`, and was dry-run against the stub first.
-- Start argv after the executable: `exec --json --sandbox workspace-write -C C:\Users\Study\AppData\Local\Temp\orchestration-m11-runtime-20260915-2245\repo -`; prompt on stdin. Exit 0 after **16,771 ms**, stdout **9 JSONL lines**, stderr empty. It created only untracked `hello.txt` with `Hello from M11.` and returned a UUID session id.
+- Throwaway repository: `%TEMP%\orchestration-m11-runtime-20260915-2245\repo`; sentinel: its parent `SENTINEL.txt`. The product repository was never passed as `-C`, `cwd` or prompt content. The one-off harness reused production argv builders, runtime preflight, `runProcess` (`shell:false`, timeout, `AbortSignal`) and `CodexJsonlParser`, and was dry-run against the stub first.
+- Start argv after the executable: `exec --json --sandbox workspace-write -C %TEMP%\orchestration-m11-runtime-20260915-2245\repo -`; prompt on stdin. Exit 0 after **16,771 ms**, stdout **9 JSONL lines**, stderr empty. It created only untracked `hello.txt` with `Hello from M11.` and returned a UUID session id.
 - Resume argv: `exec resume --json -c sandbox_mode="workspace-write" <exact-start-session-id> -`; prompt on stdin; child `cwd` remained the throwaway root. Exit 0 after **17,908 ms**, stdout **9 JSONL lines**, stderr empty. `thread.started` returned the exact same session id and the file changed to `Hello again from M11.`. This confirms resume argv acceptance, exact-session selection, cwd workspace selection and context continuity. The explicit config override was accepted while user config remained `danger-full-access`; writes stayed inside the intended workspace.
 - Both raw streams had the same shape: `thread.started` → `turn.started` → completed `agent_message` → started/completed `file_change` → started/completed `command_execution` (exit 0) → completed `agent_message` → `turn.completed`. There were no error or reasoning events, malformed/non-JSON lines, unknown events or duplicate terminals. Normalized order was `session_started` → `message_delta` → `command_started` → `command_completed` → `message_delta` → `usage_reported` → `run_completed`, with exactly one usage before one terminal.
 - Start usage: input 57,058; cached input 49,664; cache-write input 0; output 331; reasoning 28; total 57,389. Resume usage: input 119,922; cached input 110,080; cache-write input 0; output 643; reasoning 28; total 120,565. Each run reported usage exactly once and separately. `UsageSnapshot` has no cache-write field, so that observed field remains documented rather than added to the domain.
@@ -212,10 +239,10 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 
 - The task authorized exactly one real Claude review start after all offline gates passed. M12 ran
   **one Claude start, zero retries, zero Claude resumes, and zero Codex/other model calls**.
-- Current executable: `C:\Users\Study\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude-code\2.1.260\claude.exe`; `--version` returned `2.1.260 (Claude Code)`. `--help` still listed `--print`, `--output-format stream-json`, `--verbose`, `--permission-mode`, `--permission-prompts`, and `--json-schema`; `auth status` exited 0 and reported logged in. Account identifiers are not recorded here or in fixtures.
+- A dynamically discovered Claude Desktop executable returned `2.1.260 (Claude Code)`. `--help` still listed `--print`, `--output-format stream-json`, `--verbose`, `--permission-mode`, `--permission-prompts`, and `--json-schema`; `auth status` exited 0 and reported logged in. Account identifiers and private executable paths are not recorded here or in fixtures.
 - Production review argv after the executable was exactly `--print --output-format stream-json --verbose --permission-mode plan --permission-prompts none --json-schema <review schema>`. There was no `--max-turns`, resume, continue, or bypass option. The 2,013-byte prompt went only to stdin; child `cwd` was the canonical throwaway repository.
-- The first candidate throwaway (`C:\Users\Study\AppData\Local\Temp\orchestration-m12-review-20260915-235914\repo`) was owned by the offline sandbox account. The elevated real-run account therefore made Git reject it as dubious ownership. The harness stopped at review-context collection, before constructing the adapter or starting Claude, so this consumed no model call or tokens. No global `safe.directory` exception was added.
-- A fresh real-run-owned repository was created at `C:\Users\Study\AppData\Local\Temp\orchestration-m12-review-20260916-000412-study\repo`. Its committed `calculator.js` returned `a + b`; the sole working-tree change replaced that with `a - b`. `GitReviewContextCollector` scoped the 194-byte context to exactly `calculator.js`, untruncated with no omissions. In-memory checks found one begin/end marker pair and both expected diff lines, with no sentinel content. The same production collector/prompt/adapter/parser path passed a stub dry-run before the model call.
+- The first candidate throwaway (`%TEMP%\orchestration-m12-review-20260915-235914\repo`) was owned by the offline sandbox account. The elevated real-run account therefore made Git reject it as dubious ownership. The harness stopped at review-context collection, before constructing the adapter or starting Claude, so this consumed no model call or tokens. No global `safe.directory` exception was added.
+- A fresh real-run-owned repository was created under `%TEMP%\orchestration-m12-review-20260916-000412-study\repo`. Its committed `calculator.js` returned `a + b`; the sole working-tree change replaced that with `a - b`. `GitReviewContextCollector` scoped the 194-byte context to exactly `calculator.js`, untruncated with no omissions. In-memory checks found one begin/end marker pair and both expected diff lines, with no sentinel content. The same production collector/prompt/adapter/parser path passed a stub dry-run before the model call.
 
 ### Live result and protocol
 
@@ -259,8 +286,8 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 
 ### Workspace and cleanup
 
-- Throwaway parent: `C:\Users\Study\AppData\Local\Temp\orchestration-m13-e2e-20260916-004217-study`; repository: its `repo` child; retained DB: `m13.sqlite`. Initial HEAD remains `ac517dbb9d0df4ea1f02c6f2caf2b2dfa6680a98`; final status is exactly `?? greet.js` and `?? greet.test.js`. `package.json`, `README.md` and the parent sentinel retained their initial hashes, no dependency was added, and the product DB hash remained `52A371445CE0812CA930AEA418E7D7E9D6459F1778A6E14CB56592F08F5A08AF`.
-- The Claude plan start created one user plan file at `C:\Users\Study\.claude\plans\do-not-add-external-pure-flame.md`; it was recorded by path and left intact. No raw provider stream was retained. The exact ignored harness path `D:\PersonalProject\Orchestration_bot\data\live-captures\m13-live-e2e-harness.mjs` was removed after offline regression work.
+- Throwaway parent: `%TEMP%\orchestration-m13-e2e-20260916-004217-study`; repository: its `repo` child; retained DB: `m13.sqlite`. Initial HEAD remains `ac517dbb9d0df4ea1f02c6f2caf2b2dfa6680a98`; final status is exactly `?? greet.js` and `?? greet.test.js`. `package.json`, `README.md` and the parent sentinel retained their initial hashes, no dependency was added, and the product DB hash remained `52A371445CE0812CA930AEA418E7D7E9D6459F1778A6E14CB56592F08F5A08AF`.
+- The Claude plan start created one user plan file under `%USERPROFILE%\.claude\plans`; it was recorded and left intact. No raw provider stream was retained. The ignored one-off harness under `data\live-captures` was removed after offline regression work.
 - M13 remains **partial** as its own execution and was never retried. M14 later validated the exact plan-session review resume, bounded live review prompt, approval verdict and completed continuation state without repeating the M13 model calls.
 
 ## Exact-session review continuation (session 12, M14 — done)
@@ -286,7 +313,7 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 
 - Throwaway HEAD stayed `ac517dbb9d0df4ea1f02c6f2caf2b2dfa6680a98`; final status remained exactly `?? greet.js` and `?? greet.test.js`. All four file hashes, sentinel and product DB hash were unchanged. Throwaway `npm test` passed one test. The single existing Claude plan file remained unchanged by path/count/timestamp.
 - SQLite read-only connections updated the existing `m13.sqlite-shm` sidecar timestamp; the `m13.sqlite` content hash stayed unchanged and its WAL remained empty.
-- Retained M14 DB: `C:\Users\Study\AppData\Local\Temp\orchestration-m13-e2e-20260916-004217-study\m14.sqlite`, SHA-256 `B094B7B0017CCC6D38A04C59A8DB2A43E4E449C1525E66C4FE5F0DBCDFEF11ED` at post-run verification.
+- Retained M14 DB: `%TEMP%\orchestration-m13-e2e-20260916-004217-study\m14.sqlite`, SHA-256 `B094B7B0017CCC6D38A04C59A8DB2A43E4E449C1525E66C4FE5F0DBCDFEF11ED` at post-run verification.
 - The observer summary was written just after the main harness attempted to read it. Consequently the outer harness reported exit 1 after the already-persisted successful terminal. No retry occurred. The later summary recorded child exit 0 and the five safe event types; independent DB/hash checks confirmed the completed result. No raw provider stream was stored.
 - Remaining live gaps: one uninterrupted three-call execution; long-run cancellation/timeout; a real permission denial; deliberate out-of-root sandbox rejection.
 
@@ -397,7 +424,7 @@ resume: same + --resume <sessionId>
 
 ### CLI facts verified on this machine (read-only: `--version`, `exec --help`, `exec resume --help`)
 
-- Version: **codex-cli 0.154.0-alpha.6.2**, binary at `C:\Users\Study\.codex\.sandbox-bin\codex.exe` (Codex desktop install; **not on PATH** → set `CODEX_EXECUTABLE` when using `cli`).
+- Version observed: **codex-cli 0.154.0-alpha.6.2**. The Desktop-managed executable was **not on PATH**, so `CODEX_EXECUTABLE` was set dynamically for live validation; no machine-specific path is committed.
 - `codex exec` supports `--json`, `-s/--sandbox <read-only|workspace-write|danger-full-access>`, `-C/--cd`, `--skip-git-repo-check`, `--approve-for-me`, `-c key=value`, prompt via `-` (stdin).
 - `codex exec resume` supports `--json`, `-c key=value`, `--skip-git-repo-check`, prompt via `-`. It does **not** list `--sandbox` or `-C`.
 - **User config `~/.codex/config.toml` sets `sandbox_mode = "danger-full-access"`.** Without an explicit override a resumed session would inherit that. The adapter therefore pins the sandbox on both paths (see argv).
@@ -497,8 +524,9 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 - The web `App.tsx` is a single component; no routing, no design system — intentional for MVP.
 - `recoverInterrupted` marks interrupted runs failed rather than attempting resume. Resume-on-restart can be added once real session ids exist.
 - `.claude/launch.json` runs `npm start` (built output). `npm run dev` runs tsx + Vite with a `/api` proxy; the Vite proxy does not forward SSE by default in all configs — verify when first using `dev` (not exercised this session).
-- The flat Claude plan/clarification schema is fully tested offline but has not yet completed one
-  real planning start. This is the only remaining mandatory M15 acceptance gate.
+- The flat Claude plan/clarification schema completed a real planning start and uninterrupted loop.
+  The remaining mandatory gate is fresh v3 storage plus captured child exit codes for all three
+  provider processes.
 
 ## Role handoff (end of the Claude-led bootstrap)
 
@@ -512,8 +540,9 @@ M0–M10 were built and validated by Claude Code at the user's explicit request.
 
 ## Next exact work
 
-Under a new explicit allowance of at least three real calls, run the one uninterrupted flat-schema
-plan → approve → implement → exact-session review → complete acceptance described in
-`docs/CODEX_NEXT_TASK.md`. Cancellation, timeout, and valid out-of-root permission behavior no longer
-need repetition. Packaging, emergency repair, cloud, and other providers remain optional post-MVP
+Under a new explicit allowance of three real calls, repeat the uninterrupted flat-schema plan →
+approve → implement → exact-session review → complete acceptance described in
+`docs/CODEX_NEXT_TASK.md`, retaining child exit codes and proving a fresh v3 DB has no command tails
+or diff markers. Cancellation, timeout, and valid out-of-root permission behavior do not need
+repetition. Packaging, emergency repair, cloud, and other providers remain optional post-MVP
 candidates.

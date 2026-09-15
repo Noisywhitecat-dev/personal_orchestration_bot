@@ -36,12 +36,15 @@ Dependency direction: `web → shared ← server → application → domain ← 
 
 ## Process safety policy
 
-Implemented by `src/infrastructure/process/process-runner.ts` and used by every CLI adapter and by the git review-context collector. Live validation covers individual Claude start/resume, Codex start/resume, cancellation, timeout, bounded review context, and a non-temporary out-of-root denial. M13 plus M14 provide a cumulative Orchestrator/SQLite continuation across both providers. M15's uninterrupted attempt exposed a Claude structured-output schema restriction before implementation, so a new uninterrupted completion still remains to be observed (see `docs/STATUS.md`).
+Implemented by `src/infrastructure/process/process-runner.ts` and used by every CLI adapter and by the git review-context collector. Live validation covers individual Claude start/resume, Codex start/resume, cancellation, timeout, bounded review context, a non-temporary out-of-root denial, and an uninterrupted three-call plan/implement/review completion. That final run exposed persisted command stdout containing a diff; migration v3 and the application/public boundaries now remove command content. Fresh post-fix live evidence remains (see `docs/STATUS.md`).
 
 - `spawn(file, args, { shell: false })`; never concatenate command strings.
 - Working directory resolved to canonical path and verified to be inside the registered project root.
 - Explicit env allowlist; secrets never logged.
 - stdout / stderr captured separately, bounded in size.
+- Adapter parsers may use bounded command tails in memory, but the orchestrator persists only
+  `commandId`, `exitCode`, and stdout/stderr presence booleans. Public DTOs repeat this redaction for
+  legacy/in-memory events.
 - Timeout + cancellation via `AbortSignal`; child processes killed on shutdown.
 - Codex approvals/sandbox never bypassed. `--dangerously-bypass-approvals-and-sandbox` is forbidden.
 - Every Codex prompt repeats the registered-root-only boundary. The sandbox is still the enforcement layer; prompt text is defense in depth.
@@ -55,7 +58,7 @@ Windows absolute `codex.exe` selections fail fast unless the executable and all 
 
 Every task stores maximum Claude/Codex runs, nullable token ceilings, clarification rounds, and review rounds. `executeRun` invokes one centralized guard before inserting the run or entering an adapter. Run counts include failed and cancelled provider entries. Known token totals are checked at the next boundary. Estimated or unavailable records prevent the UI from presenting a reliable remaining-token number; nullable ceilings are unlimited.
 
-SQLite migration v2 adds these fields with compatible defaults and preserves v1 rows. Public task/run DTOs expose `hasClaudeSession`, `hasCodexSession`, and `hasSession` booleans instead of identifier values.
+SQLite migration v2 adds these fields with compatible defaults and preserves v1 rows. Migration v3 removes legacy command stdout/stderr tails, enables secure deletion, and performs a one-time checkpoint/VACUUM so removed bytes do not remain in free pages or WAL. Public task/run DTOs expose `hasClaudeSession`, `hasCodexSession`, and `hasSession` booleans instead of identifier values.
 
 ## Review loop
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -40,8 +40,8 @@ function boot(dbPath: string, idPrefix: string) {
 describe('SQLite persistence', () => {
   it('migrations are idempotent', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toBe(2);
-    expect(migrate(db)).toBe(2);
+    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(3);
     db.close();
   });
 
@@ -55,11 +55,15 @@ describe('SQLite persistence', () => {
         reviews_json TEXT NOT NULL DEFAULT '[]', codex_session_id TEXT, claude_session_id TEXT,
         failure_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
       );
+      CREATE TABLE task_events (
+        id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT, type TEXT NOT NULL,
+        payload_json TEXT NOT NULL, created_at TEXT NOT NULL, seq INTEGER NOT NULL
+      );
       PRAGMA user_version = 1;
       INSERT INTO projects VALUES ('p', 'old', 'D:/old', '2026-01-01');
       INSERT INTO tasks VALUES ('t', 'p', 'old request', 'awaiting_approval', NULL, 0, 2, '[]', NULL, NULL, NULL, '2026-01-01', '2026-01-01');
     `);
-    expect(migrate(db)).toBe(2);
+    expect(migrate(db)).toBe(3);
     const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get('t') as Record<string, unknown>;
     expect(row['request']).toBe('old request');
     expect(row['clarification_round']).toBe(0);
@@ -68,6 +72,41 @@ describe('SQLite persistence', () => {
     expect(row['max_codex_runs']).toBe(3);
     expect(row['claude_token_ceiling']).toBeNull();
     db.close();
+  });
+
+  it('migrates v2 command events without retaining stdout or stderr content', () => {
+    const path = tempDbPath();
+    const db = new DatabaseSync(path);
+    db.exec(`
+      CREATE TABLE task_events (
+        id TEXT PRIMARY KEY, task_id TEXT NOT NULL, run_id TEXT, type TEXT NOT NULL,
+        payload_json TEXT NOT NULL, created_at TEXT NOT NULL, seq INTEGER NOT NULL
+      );
+      PRAGMA user_version = 2;
+    `);
+    db.prepare('INSERT INTO task_events VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      'e',
+      't',
+      'r',
+      'command_completed',
+      JSON.stringify({
+        commandId: 'c',
+        exitCode: 0,
+        stdoutTail: 'diff --git a/secret b/secret',
+        stderrTail: 'private path',
+      }),
+      '2026-01-01',
+      1,
+    );
+    expect(migrate(db)).toBe(3);
+    const row = db.prepare('SELECT payload_json FROM task_events').get() as {
+      payload_json: string;
+    };
+    expect(JSON.parse(row.payload_json)).toEqual({ commandId: 'c', exitCode: 0 });
+    db.close();
+    const bytes = readFileSync(path);
+    expect(bytes.includes(Buffer.from('diff --git a/secret b/secret'))).toBe(false);
+    expect(bytes.includes(Buffer.from('stdoutTail'))).toBe(false);
   });
 
   it('round-trips all entities through a completed task', async () => {
