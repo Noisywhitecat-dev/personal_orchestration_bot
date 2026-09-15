@@ -13,20 +13,23 @@ import { FakeCodexAdapter } from '../../src/infrastructure/agents/fake-codex-ada
 import { createInMemoryRepositories } from '../../src/infrastructure/persistence/in-memory-repositories.js';
 import { createApp } from '../../src/server/app.js';
 import type { ProjectDetailResponse, TaskDetailResponse } from '../../src/shared/contracts.js';
+import { GatedAdapter } from '../helpers/gated-adapter.js';
 
 let server: Server;
 let base: string;
 let orchestrator: Orchestrator;
+let claude: GatedAdapter;
 let projectDir: string;
 
 beforeAll(async () => {
   projectDir = mkdtempSync(join(tmpdir(), 'orch-proj-'));
   const clock = new FixedClock();
   const ids = new SequentialIdGenerator();
+  claude = new GatedAdapter(new FakeClaudeAdapter(clock, ids), ['plan']);
   orchestrator = new Orchestrator({
     clock,
     ids,
-    claude: new FakeClaudeAdapter(clock, ids),
+    claude,
     codex: new FakeCodexAdapter(clock, ids),
     repos: createInMemoryRepositories(),
   });
@@ -103,13 +106,30 @@ describe('HTTP API', () => {
     expect(created.status).toBe(201);
     const projectId = created.body.project.id;
 
+    // The planner is parked at a gate, so the response can only arrive if the server does not
+    // wait for planning.
     const submitted = await post<{ task: Task }>('/api/requests', {
       projectId,
       request: 'Add a button',
     });
-    expect(submitted.status).toBe(201);
-    expect(submitted.body.task.state).toBe('awaiting_approval');
+    expect(submitted.status).toBe(202);
+    expect(submitted.body.task.state).toBe('draft');
+    expect(submitted.body.task.plan).toBeNull();
     const taskId = submitted.body.task.id;
+    expect(claude.pending).toBe(1);
+
+    // Still draft while the planner runs; approval is refused.
+    const early = await get<TaskDetailResponse>(`/api/tasks/${taskId}`);
+    expect(early.body.task.state).toBe('draft');
+    expect(early.body.runs.map((r) => `${r.kind}:${r.status}`)).toEqual(['plan:running']);
+    const tooEarly = await post<{ error: { code: string } }>(`/api/tasks/${taskId}/approve`);
+    expect(tooEarly.status).toBe(409);
+
+    claude.release();
+    await orchestrator.whenSettled(taskId as Task['id']);
+    const planned = await get<TaskDetailResponse>(`/api/tasks/${taskId}`);
+    expect(planned.body.task.state).toBe('awaiting_approval');
+    expect(planned.body.task.plan?.steps).toHaveLength(3);
 
     // Approval gate: reject-then-approve is impossible; approve works once.
     const approved = await post<{ task: Task }>(`/api/tasks/${taskId}/approve`);
@@ -148,7 +168,30 @@ describe('HTTP API', () => {
       .map((m) => JSON.parse(m[1] ?? '{}') as { type: string; task?: Task })
       .filter((e) => e.type === 'task_updated')
       .map((e) => e.task?.state);
+    expect(states[0]).toBe('draft');
+    expect(states).toContain('awaiting_approval');
+    expect(states.indexOf('draft')).toBeLessThan(states.indexOf('awaiting_approval'));
     expect(states.at(-1)).toBe('completed');
+  });
+
+  it('cancel during planning over HTTP → cancelled', async () => {
+    const created = await post<{ project: { id: string } }>('/api/projects', {
+      name: 'demo2',
+      rootPath: projectDir,
+    });
+    const submitted = await post<{ task: Task }>('/api/requests', {
+      projectId: created.body.project.id,
+      request: 'Cancel me',
+    });
+    expect(submitted.status).toBe(202);
+    await claude.waitForPending();
+    const cancelled = await post<{ task: Task }>(`/api/tasks/${submitted.body.task.id}/cancel`);
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body.task.state).toBe('cancelled');
+    expect(claude.pending).toBe(0);
+    const detail = await get<TaskDetailResponse>(`/api/tasks/${submitted.body.task.id}`);
+    expect(detail.body.task.state).toBe('cancelled');
+    expect(detail.body.runs[0]?.status).toBe('cancelled');
   });
 
   it('returns 404 for unknown task and route', async () => {
