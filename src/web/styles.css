@@ -191,3 +191,10 @@ input {
 .task-list button.active {
   border-color: #4a7;
 }
+.hint {
+  color: #7a4d00;
+  background: #fff4d6;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}

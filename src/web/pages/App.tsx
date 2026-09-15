@@ -36,6 +36,20 @@ const EMPTY_USAGE: UsageSummary = {
   },
 };
 
+/** True when `next` is the same task as `cur` but not newer. Guards against out-of-order HTTP/SSE. */
+function isStale(cur: Task | null | undefined, next: Task): boolean {
+  return !!cur && cur.id === next.id && cur.updatedAt > next.updatedAt;
+}
+
+function mergeTask(list: Task[], next: Task): Task[] {
+  const cur = list.find((t) => t.id === next.id);
+  if (!cur) return [...list, next];
+  if (isStale(cur, next)) return list;
+  return list.map((t) => (t.id === next.id ? next : t));
+}
+
+const PLANNING_HINT = 'Claude is preparing a plan…';
+
 interface SystemLine {
   at: string;
   text: string;
@@ -89,9 +103,16 @@ export function App() {
     setTaskId((cur) => (cur && d.tasks.some((t) => t.id === cur) ? cur : (latest?.id ?? null)));
   }, []);
 
+  /** Apply a task snapshot unless a newer version of the same task is already shown. */
+  const applyTask = useCallback((next: Task) => {
+    setTasks((ts) => mergeTask(ts, next));
+    setTask((cur) => (cur && cur.id !== next.id ? cur : isStale(cur, next) ? cur : next));
+  }, []);
+
   const loadTask = useCallback(async (id: string) => {
     const d = await api.taskDetail(id);
-    setTask(d.task);
+    // A later SSE update may already be applied; never roll it back.
+    setTask((cur) => (isStale(cur, d.task) ? cur : d.task));
     setRuns(d.runs);
     setTimeline(d.timeline);
     setTaskUsage(d.usage);
@@ -121,12 +142,8 @@ export function App() {
       switch (e.type) {
         case 'task_updated':
           if (e.task.projectId === projectId) {
-            setTasks((ts) =>
-              ts.some((t) => t.id === e.task.id)
-                ? ts.map((t) => (t.id === e.task.id ? e.task : t))
-                : [...ts, e.task],
-            );
-            if (e.task.id === taskId) setTask(e.task);
+            setTasks((ts) => mergeTask(ts, e.task));
+            if (e.task.id === taskId) applyTask(e.task);
             if (!taskId) setTaskId(e.task.id);
           }
           return;
@@ -158,7 +175,7 @@ export function App() {
           return;
       }
     },
-    [projectId, taskId, log],
+    [projectId, taskId, log, applyTask],
   );
   useEvents(onEvent);
 
@@ -168,8 +185,9 @@ export function App() {
     const text = draft;
     setDraft('');
     void run('submit', async () => {
-      const t = await api.submitRequest(projectId, text);
+      const t = await api.submitRequest(projectId, text); // 202 + draft; planning continues via SSE
       setTaskId(t.id);
+      applyTask(t);
     });
   };
 
@@ -277,6 +295,7 @@ export function App() {
             <p>
               <strong>{task.plan?.title ?? task.request}</strong>
             </p>
+            {task.state === 'draft' && <p className="hint">{PLANNING_HINT}</p>}
             {task.plan && (
               <ol style={{ paddingLeft: 18 }}>
                 {task.plan.steps.map((s, i) => (

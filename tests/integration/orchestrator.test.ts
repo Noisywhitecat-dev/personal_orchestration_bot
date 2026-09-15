@@ -3,10 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { type OrchestrationEvent } from '../../src/application/events.js';
 import { Orchestrator } from '../../src/application/orchestrator.js';
 import { OrchestrationError } from '../../src/domain/errors.js';
+import type { ProjectId } from '../../src/domain/ids.js';
 import { FixedClock, SequentialIdGenerator } from '../../src/domain/ports.js';
 import { FakeClaudeAdapter } from '../../src/infrastructure/agents/fake-claude-adapter.js';
 import { FakeCodexAdapter } from '../../src/infrastructure/agents/fake-codex-adapter.js';
 import { createInMemoryRepositories } from '../../src/infrastructure/persistence/in-memory-repositories.js';
+
+/** Submit a request and wait for background planning to settle. */
+async function submitAndPlan(o: Orchestrator, projectId: ProjectId, request: string) {
+  const draft = await o.submitRequest(projectId, request);
+  await o.whenSettled(draft.id);
+  return o.getTask(draft.id);
+}
 
 function setup(opts: { changeRequestsBeforeApprove?: number; maxReviewRounds?: number } = {}) {
   const clock = new FixedClock();
@@ -35,7 +43,11 @@ function setup(opts: { changeRequestsBeforeApprove?: number; maxReviewRounds?: n
 describe('Orchestrator: plan + approval', () => {
   it('produces a plan and waits for approval', async () => {
     const { orchestrator, project } = setup();
-    const task = await orchestrator.submitRequest(project.id, 'Add a logout button');
+    const draft = await orchestrator.submitRequest(project.id, 'Add a logout button');
+    expect(draft.state).toBe('draft');
+    expect(draft.plan).toBeNull();
+    await orchestrator.whenSettled(draft.id);
+    const task = orchestrator.getTask(draft.id);
     expect(task.state).toBe('awaiting_approval');
     expect(task.plan?.steps).toHaveLength(3);
     expect(task.claudeSessionId).not.toBeNull();
@@ -46,7 +58,7 @@ describe('Orchestrator: plan + approval', () => {
 
   it('rejects → cancelled and never runs codex', async () => {
     const { orchestrator, project } = setup();
-    const task = await orchestrator.submitRequest(project.id, 'Add a logout button');
+    const task = await submitAndPlan(orchestrator, project.id, 'Add a logout button');
     const rejected = orchestrator.reject(task.id, 'not now');
     expect(rejected.state).toBe('cancelled');
     await orchestrator.whenSettled(task.id);
@@ -55,7 +67,7 @@ describe('Orchestrator: plan + approval', () => {
 
   it('cannot approve twice', async () => {
     const { orchestrator, project } = setup();
-    const task = await orchestrator.submitRequest(project.id, 'x');
+    const task = await submitAndPlan(orchestrator, project.id, 'x');
     orchestrator.approve(task.id);
     expect(() => orchestrator.approve(task.id)).toThrow(OrchestrationError);
     await orchestrator.whenSettled(task.id);
@@ -65,7 +77,7 @@ describe('Orchestrator: plan + approval', () => {
 describe('Orchestrator: implementation + review loop', () => {
   it('completes on first review approval', async () => {
     const { orchestrator, project, events } = setup();
-    const task = await orchestrator.submitRequest(project.id, 'Add a logout button');
+    const task = await submitAndPlan(orchestrator, project.id, 'Add a logout button');
     orchestrator.approve(task.id);
     await orchestrator.whenSettled(task.id);
 
@@ -104,7 +116,7 @@ describe('Orchestrator: implementation + review loop', () => {
 
   it('runs one revision round and reuses the codex session', async () => {
     const { orchestrator, project } = setup({ changeRequestsBeforeApprove: 1 });
-    const task = await orchestrator.submitRequest(project.id, 'Add a logout button');
+    const task = await submitAndPlan(orchestrator, project.id, 'Add a logout button');
     orchestrator.approve(task.id);
     await orchestrator.whenSettled(task.id);
 
@@ -125,7 +137,7 @@ describe('Orchestrator: implementation + review loop', () => {
       changeRequestsBeforeApprove: 10,
       maxReviewRounds: 2,
     });
-    const task = await orchestrator.submitRequest(project.id, 'Add a logout button');
+    const task = await submitAndPlan(orchestrator, project.id, 'Add a logout button');
     orchestrator.approve(task.id);
     await orchestrator.whenSettled(task.id);
 
@@ -141,7 +153,7 @@ describe('Orchestrator: implementation + review loop', () => {
 
   it('prompt marker overrides review behaviour per task', async () => {
     const { orchestrator, project } = setup();
-    const task = await orchestrator.submitRequest(project.id, 'Add a button [fake-changes:1]');
+    const task = await submitAndPlan(orchestrator, project.id, 'Add a button [fake-changes:1]');
     orchestrator.approve(task.id);
     await orchestrator.whenSettled(task.id);
     expect(orchestrator.getTask(task.id).reviews.map((r) => r.verdict)).toEqual([
@@ -152,7 +164,7 @@ describe('Orchestrator: implementation + review loop', () => {
 
   it('fails the task when codex fails', async () => {
     const { orchestrator, project } = setup();
-    const task = await orchestrator.submitRequest(project.id, 'Do the thing [fake-fail]');
+    const task = await submitAndPlan(orchestrator, project.id, 'Do the thing [fake-fail]');
     orchestrator.approve(task.id);
     await orchestrator.whenSettled(task.id);
     const final = orchestrator.getTask(task.id);
@@ -165,7 +177,7 @@ describe('Orchestrator: implementation + review loop', () => {
 describe('Orchestrator: timeline and recovery', () => {
   it('records a bounded timeline', async () => {
     const { orchestrator, project } = setup();
-    const task = await orchestrator.submitRequest(project.id, 'x');
+    const task = await submitAndPlan(orchestrator, project.id, 'x');
     orchestrator.approve(task.id);
     await orchestrator.whenSettled(task.id);
     const types = orchestrator.listTimeline(task.id).map((e) => e.type);
@@ -178,16 +190,31 @@ describe('Orchestrator: timeline and recovery', () => {
 
   it('recoverInterrupted fails mid-run tasks and restarts queued ones', async () => {
     const { orchestrator, repos, project } = setup();
-    const t1 = await orchestrator.submitRequest(project.id, 'one');
-    const t2 = await orchestrator.submitRequest(project.id, 'two');
+    const t1 = await submitAndPlan(orchestrator, project.id, 'one');
+    const t2 = await submitAndPlan(orchestrator, project.id, 'two');
+    const t3 = await submitAndPlan(orchestrator, project.id, 'three');
+    const t4 = await submitAndPlan(orchestrator, project.id, 'four');
     // Simulate persisted state from a crashed process.
     repos.tasks.update({ ...orchestrator.getTask(t1.id), state: 'implementing' });
     repos.tasks.update({ ...orchestrator.getTask(t2.id), state: 'queued' });
+    repos.tasks.update({ ...orchestrator.getTask(t3.id), state: 'draft' });
+    const planRun = orchestrator.listRuns(t3.id)[0];
+    if (!planRun) throw new Error('no plan run');
+    repos.runs.update({ ...planRun, status: 'running', finishedAt: null });
+    // t4 stays awaiting_approval.
 
     const result = orchestrator.recoverInterrupted();
-    expect(result.failed).toEqual([t1.id]);
+    expect(result.failed).toEqual([t1.id, t3.id]);
     expect(result.restarted).toEqual([t2.id]);
     expect(orchestrator.getTask(t1.id).failure?.code).toBe('INTERRUPTED');
+    expect(orchestrator.getTask(t3.id).state).toBe('failed');
+    expect(orchestrator.getTask(t3.id).failure?.code).toBe('INTERRUPTED');
+    const closed = orchestrator.listRuns(t3.id)[0];
+    expect(closed?.status).toBe('failed');
+    expect(closed?.finishedAt).not.toBeNull();
+    expect(orchestrator.getTask(t4.id).state).toBe('awaiting_approval');
+    // Running it again touches nothing.
+    expect(orchestrator.recoverInterrupted()).toEqual({ restarted: [], failed: [] });
 
     await orchestrator.whenSettled(t2.id);
     expect(orchestrator.getTask(t2.id).state).toBe('completed');

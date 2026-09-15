@@ -8,6 +8,8 @@
 | M3        | SQLite persistence, repositories, restart recovery test, HTTP API, SSE           | Done   |
 | M4        | Minimal React UI                                                                 | Done   |
 | M5        | `docs/CODEX_NEXT_TASK.md` for the real Codex CLI adapter                         | Done   |
+| M6        | Real Codex CLI adapter (stub-tested, no live run yet)                            | Done   |
+| M7        | Asynchronous planning: 202 + draft, background planner, draft cancel/recovery    | Done   |
 
 ## After bootstrap
 
