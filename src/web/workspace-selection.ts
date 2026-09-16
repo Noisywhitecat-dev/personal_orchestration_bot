@@ -61,7 +61,7 @@ export class WorkspaceSelection {
       const project = await this.reader.projectDetail(projectId);
       if (!current()) return;
       let taskId = this.value.taskId;
-      if (this.restoreTask) {
+      if (this.restoreTask || (taskId && !project.tasks.some((t) => t.id === taskId))) {
         const remembered = this.lastTask.get(projectId);
         const tasks = [...project.tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         taskId = tasks.find((t) => t.id === remembered)?.id ?? tasks[0]?.id ?? null;

@@ -175,6 +175,20 @@ export function createSqliteRepositories(db: DatabaseSync): Repositories {
   };
 
   return {
+    deleteTaskHistory: (id) => {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare('DELETE FROM messages WHERE task_id = ?').run(id);
+        db.prepare('DELETE FROM task_events WHERE task_id = ?').run(id);
+        db.prepare('DELETE FROM usage_records WHERE task_id = ?').run(id);
+        db.prepare('DELETE FROM runs WHERE task_id = ?').run(id);
+        db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+    },
     projects: {
       insert: (p) => void s.insertProject.run(p.id, p.name, p.rootPath, p.createdAt),
       findById: (id) => {

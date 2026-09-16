@@ -148,6 +148,7 @@ export type SseEvent =
       OrchestrationEvent,
       {
         type:
+          | 'task_deleted'
           | 'message_added'
           | 'timeline_appended'
           | 'usage_updated'

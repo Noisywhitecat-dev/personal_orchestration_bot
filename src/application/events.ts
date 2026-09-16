@@ -7,6 +7,7 @@ import type { UsageSummary } from '../domain/usage.js';
 
 /** Events pushed to UI clients (over SSE) whenever orchestration state changes. */
 export type OrchestrationEvent =
+  | { type: 'task_deleted'; taskId: TaskId; projectId: ProjectId }
   | { type: 'task_updated'; task: Task }
   | { type: 'run_updated'; run: Run }
   | { type: 'message_added'; message: Message }

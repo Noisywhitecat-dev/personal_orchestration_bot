@@ -47,6 +47,8 @@ export interface TaskEventRepository {
 }
 
 export interface Repositories {
+  /** Atomically removes a task and all its local history, including recorded usage. */
+  deleteTaskHistory(taskId: TaskId): void;
   projects: ProjectRepository;
   tasks: TaskRepository;
   runs: RunRepository;

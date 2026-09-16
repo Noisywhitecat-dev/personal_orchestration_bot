@@ -18,6 +18,13 @@ export function createInMemoryRepositories(): Repositories {
   const clone = <T>(v: T): T => structuredClone(v);
 
   return {
+    deleteTaskHistory: (id) => {
+      for (const [key, run] of runs) if (run.taskId === id) runs.delete(key);
+      for (const rows of [messages, usage, events]) {
+        for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.taskId === id) rows.splice(i, 1);
+      }
+      tasks.delete(id);
+    },
     projects: {
       insert: (p) => void projects.set(p.id, clone(p)),
       findById: (id) => clone(projects.get(id) ?? null),
