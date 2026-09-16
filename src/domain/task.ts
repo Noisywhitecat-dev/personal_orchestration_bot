@@ -34,6 +34,15 @@ export interface TaskPlan {
   title: string;
   summary: string;
   steps: string[];
+  /** Optional for compatibility with stored pre-M17 plans. */
+  objective?: string | undefined;
+  scope?: string[] | undefined;
+  outOfScope?: string[] | undefined;
+  acceptanceCriteria?: string[] | undefined;
+  suggestedFiles?: string[] | undefined;
+  verification?: string[] | undefined;
+  risks?: string[] | undefined;
+  riskLevel?: 'low' | 'medium' | 'high' | undefined;
 }
 
 /** One review verdict, appended per review round. */

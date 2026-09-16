@@ -1,5 +1,30 @@
 # Architecture
 
+## M17 additions (current)
+
+- React shell: `pages/App.tsx` composes `ProjectSidebar`, `PlanCard`, `ExecutionSummary`,
+  `TaskDetails`, `ProjectTools`, `Onboarding` and settings components. `hooks/useWorkspace`
+  handles REST/SSE with selection/request-generation guards; `view-model` maps states and recovery actions.
+- Shared `presets`, model catalog, diagnostics and project-tools contracts keep renderer and server aligned.
+  Desktop settings add execution limits, timeouts and onboarding completion with compatible defaults.
+- Application `prompts.ts` owns planning/clarification/implementation/revision builders;
+  `review-prompt.ts` owns read-only bounded review. All user/report/context data is delimited.
+  Existing plan fields remain valid; extended contract fields are optional in storage/parsers.
+- Infrastructure `harness/templates` contains short versioned role skills and conditional quality guidance.
+  `project-harness` accepts only registered canonical roots and a fixed template manifest, checks every
+  ancestor for links, and uses exclusive creation. Existing/modified files are never replaced.
+  Per-file failures permit partial installation and explicit conflict reporting. Concurrent hostile filesystem
+  mutation is outside the local single-user trust model; do not install while another process replaces directories.
+- `preflight` uses only fixed read-only version/auth/Git argv through the safe runner. Raw auth output is discarded.
+  Routes accept project IDs, not a caller-supplied installation root. Install requires `{confirm:true}`;
+  cross-origin browser POSTs are rejected. No background probe starts a model.
+- SQLite v4 purges historical raw agent-message and command-start content and compacts once. New provider
+  message deltas, argv/cwd and command tails remain in memory; errors are allowlisted and replaced with safe guidance.
+  Approved plans and structured reports remain task records. Exported diagnostics use only explicit enum/numeric fields.
+- Shutdown aborts and drains pipelines before closing SQLite. Startup never schedules AI calls: queued and
+  review_requested become cancelled with INTERRUPTED, active execution/changes_requested become failed,
+  approved becomes completed. These use the existing state-machine transitions. User-waiting states survive.
+
 Single repository, single `package.json`, directories split by concern. No monorepo.
 
 ## Layers

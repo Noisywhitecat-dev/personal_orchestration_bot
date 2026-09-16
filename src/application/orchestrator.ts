@@ -1,3 +1,4 @@
+import { safeAgentFailure } from '../domain/agent-failure.js';
 import type { AgentEvent, AgentResult } from '../domain/agent-events.js';
 import { OrchestrationError } from '../domain/errors.js';
 import {
@@ -43,6 +44,12 @@ import {
   type ReviewContextCollector,
 } from './review-context.js';
 import { buildReviewPrompt, type ImplementationReport } from './review-prompt.js';
+import {
+  buildPlanningPrompt,
+  buildClarificationPrompt,
+  buildImplementationPrompt,
+  buildRevisionPrompt,
+} from './prompts.js';
 
 export interface OrchestratorOptions {
   clock: Clock;
@@ -59,6 +66,7 @@ export interface OrchestratorOptions {
    * git-backed collector; tests inject doubles.
    */
   reviewContext?: ReviewContextCollector;
+  roleSkill?: (root: string, kind: RunKind) => string | null;
 }
 
 interface RunOutcome {
@@ -72,6 +80,8 @@ interface RunOutcome {
  * `transition()`; the orchestrator never sets `task.state` directly.
  */
 export class Orchestrator {
+  private closing = false;
+  private readonly optionsRoleSkill: OrchestratorOptions['roleSkill'];
   readonly bus: EventBus;
   private readonly clock: Clock;
   private readonly ids: IdGenerator;
@@ -85,6 +95,7 @@ export class Orchestrator {
   private readonly aborts = new Map<TaskId, AbortController>();
 
   constructor(opts: OrchestratorOptions) {
+    this.optionsRoleSkill = opts.roleSkill;
     this.clock = opts.clock;
     this.ids = opts.ids;
     this.claude = opts.claude;
@@ -175,6 +186,11 @@ export class Orchestrator {
     request: string,
     executionLimits?: Partial<ExecutionLimitsInput>,
   ): Promise<Task> {
+    if (this.closing)
+      throw new OrchestrationError(
+        'INTERNAL',
+        '서버가 다시 시작 중입니다. 잠시 후 다시 시도하세요.',
+      );
     const project = this.repos.projects.findById(projectId);
     if (!project)
       throw new OrchestrationError('PROJECT_NOT_FOUND', `Project ${projectId} not found.`);
@@ -217,6 +233,7 @@ export class Orchestrator {
 
   /** Persist one user answer, then resume the exact Claude planning session once. */
   answerClarification(taskId: TaskId, answer: string): Task {
+    if (this.closing) throw new OrchestrationError('INTERNAL', '서버가 다시 시작 중입니다.');
     let task = this.getTask(taskId);
     if (task.state !== 'awaiting_clarification') {
       throw new OrchestrationError(
@@ -230,25 +247,22 @@ export class Orchestrator {
       round: task.clarificationRound,
       length: answer.length,
     });
-    const prompt = [
-      task.request,
-      '',
-      `Completed clarification rounds: ${task.clarificationRound}.`,
-      'Clarification response from the user:',
-      answer,
-      '',
-      'Continue clarifying if essential information is still missing; otherwise return the final plan.',
-      'For kind "plan", include title, summary, and steps. For kind "clarification", include question. Do not include fields for the other kind.',
-    ].join('\n');
+    const prompt = buildClarificationPrompt(task, answer);
     this.startPipeline(task.id, (signal) => this.runPlanning(task.id, signal, prompt));
     return task;
   }
 
   /** User approval. Transitions to `queued` and starts the implementation pipeline in the background. */
   approve(taskId: TaskId): Task {
+    if (this.closing) throw new OrchestrationError('INTERNAL', '서버가 다시 시작 중입니다.');
     let task = this.getTask(taskId);
     task = this.move(task, 'queued', { userApproved: true });
-    this.addMessage(task.projectId, task.id, 'system', 'Plan approved. Sending to Codex.');
+    this.addMessage(
+      task.projectId,
+      task.id,
+      'system',
+      '계획이 승인되었습니다. Codex가 코드를 작성합니다.',
+    );
     this.startImplementation(task.id);
     return task;
   }
@@ -295,7 +309,7 @@ export class Orchestrator {
    * - `draft` (planning was in flight or never started): failed with INTERRUPTED. Planning is
    *   deliberately NOT re-run automatically; that would spend tokens without the user asking.
    * - `implementing` / `reviewing`: failed with INTERRUPTED, running runs closed.
-   * - `queued`: nothing had started, safe to restart the implementation pipeline.
+   * - queued/review_requested/changes_requested: interrupted, never automatically call AI.
    * - `awaiting_approval` and terminal states: untouched.
    */
   recoverInterrupted(): { restarted: TaskId[]; failed: TaskId[] } {
@@ -304,13 +318,28 @@ export class Orchestrator {
     for (const task of this.repos.tasks.listAll()) {
       // A task with a live pipeline in this process was not interrupted.
       if (this.pipelines.has(task.id)) continue;
-      if (task.state === 'queued') {
-        this.startImplementation(task.id);
-        restarted.push(task.id);
+      if (task.state === 'approved') {
+        this.move(task, 'completed');
+        continue;
+      }
+      if (task.state === 'queued' || task.state === 'review_requested') {
+        this.move(
+          this.save({
+            ...task,
+            failure: {
+              code: 'INTERRUPTED',
+              message:
+                '재시작으로 대기 중인 작업이 중단되었습니다. 새 요청은 추가 호출을 사용합니다.',
+            },
+          }),
+          'cancelled',
+        );
+        failed.push(task.id);
       } else if (
         task.state === 'draft' ||
         task.state === 'implementing' ||
-        task.state === 'reviewing'
+        task.state === 'reviewing' ||
+        task.state === 'changes_requested'
       ) {
         for (const run of this.repos.runs.listByTask(task.id)) {
           if (run.status === 'running') {
@@ -333,6 +362,15 @@ export class Orchestrator {
       }
     }
     return { restarted, failed };
+  }
+
+  /** Drain provider pipelines before closing SQLite; restart never spends tokens. */
+  async shutdown(): Promise<void> {
+    this.closing = true;
+    const active = [...this.pipelines.keys()];
+    for (const abort of this.aborts.values()) abort.abort();
+    await Promise.all(active.map((id) => this.whenSettled(id)));
+    this.recoverInterrupted();
   }
 
   // ---------- pipelines ----------
@@ -377,7 +415,7 @@ export class Orchestrator {
       task,
       'claude',
       'plan',
-      prompt ?? this.planningPrompt(task),
+      prompt ?? buildPlanningPrompt(task),
       signal,
     );
 
@@ -408,14 +446,16 @@ export class Orchestrator {
     }
 
     if (outcome.result?.kind === 'plan') {
-      const { title, summary, steps } = outcome.result;
-      task = this.save({ ...task, plan: { title, summary, steps } });
+      const { kind, ...plan } = outcome.result;
+      void kind;
+      const { summary } = plan;
+      task = this.save({ ...task, plan });
       task = this.move(task, 'awaiting_approval');
       this.addMessage(
         task.projectId,
         task.id,
         'claude',
-        `**${title}**\n${summary}\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\nApprove to send to Codex.`,
+        `${summary}\n\n계획을 승인하면 Codex가 코드 작성을 시작합니다.`,
       );
       return;
     }
@@ -438,7 +478,7 @@ export class Orchestrator {
       if (task.state === 'queued' || task.state === 'changes_requested') {
         const revising = task.state === 'changes_requested';
         task = this.move(task, 'implementing');
-        const prompt = revising ? this.revisePrompt(task) : this.implementPrompt(task);
+        const prompt = revising ? buildRevisionPrompt(task) : buildImplementationPrompt(task);
         const outcome = await this.executeRun(
           task,
           'codex',
@@ -451,11 +491,7 @@ export class Orchestrator {
         if (signal.aborted) return; // cancelled mid-run: cancel() owns the final state
 
         if (outcome.result?.kind === 'implementation') {
-          implementation = {
-            summary: outcome.result.summary,
-            changedFiles: [...outcome.result.changedFiles],
-            testsPassed: outcome.result.testsPassed,
-          };
+          implementation = { ...outcome.result };
           // Fresh snapshot of the working tree after every implement/revise run.
           context = await this.collectReviewContext(task, implementation.changedFiles, signal);
           if (signal.aborted) return; // cancelled during collection: cancel() owns the final state
@@ -464,7 +500,7 @@ export class Orchestrator {
             task.projectId,
             task.id,
             'codex',
-            `${outcome.result.summary}\nChanged: ${outcome.result.changedFiles.join(', ') || '(none)'}\nTests: ${formatTests(outcome.result.testsPassed)}`,
+            `${outcome.result.summary}\n변경 파일: ${outcome.result.changedFiles.join(', ') || '(none)'}\n테스트: ${formatTests(outcome.result.testsPassed)}${outcome.result.verificationResults?.length ? `\n검증 결과: ${outcome.result.verificationResults.join('; ')}` : ''}${outcome.result.deviations?.length ? `\n계획과 달라진 점: ${outcome.result.deviations.join('; ')}` : ''}${outcome.result.remainingRisks?.length ? `\n남은 위험: ${outcome.result.remainingRisks.join('; ')}` : ''}`,
           );
         } else {
           task = this.fail(
@@ -518,7 +554,7 @@ export class Orchestrator {
           task.projectId,
           task.id,
           'claude',
-          `Review round ${round}: ${verdict === 'approve' ? 'APPROVED' : 'CHANGES REQUESTED'}\n${summary}${changeRequests.length ? `\n- ${changeRequests.join('\n- ')}` : ''}`,
+          `검토 ${round}회: ${verdict === 'approve' ? '통과' : '수정 필요'}\n${summary}${changeRequests.length ? `\n- ${changeRequests.join('\n- ')}` : ''}`,
         );
 
         const decision = resolveReviewVerdict(task, verdict);
@@ -535,7 +571,7 @@ export class Orchestrator {
         task = this.move(task, decision.next);
         if (task.state === 'approved') {
           task = this.move(task, 'completed');
-          this.addMessage(task.projectId, task.id, 'system', 'Task completed.');
+          this.addMessage(task.projectId, task.id, 'system', '작업이 완료되었습니다.');
         }
       }
     }
@@ -593,7 +629,9 @@ export class Orchestrator {
       taskId: task.id,
       projectRoot: project.rootPath,
       kind,
-      prompt,
+      prompt: [this.optionsRoleSkill?.(project.rootPath, kind), prompt]
+        .filter(Boolean)
+        .join('\n\n'),
       ...(signal ? { signal } : {}),
     };
     const stream = existingSession ? adapter.resume(existingSession, input) : adapter.start(input);
@@ -613,11 +651,8 @@ export class Orchestrator {
         if (event.type === 'session_started') run = { ...run, sessionId: event.sessionId };
         if (event.type === 'run_completed' || event.type === 'run_failed') break;
       }
-    } catch (err) {
-      outcome.error = {
-        code: 'AGENT_RUN_FAILED',
-        message: err instanceof Error ? err.message : String(err),
-      };
+    } catch {
+      outcome.error = safeAgentFailure({ code: 'AGENT_RUN_FAILED', message: '' });
     }
 
     if (!outcome.result && !outcome.error) {
@@ -626,7 +661,7 @@ export class Orchestrator {
     if (messageBuffer.length) {
       this.appendTimeline(task.id, run.id, 'agent_message', {
         provider,
-        text: truncateText(messageBuffer.join('')),
+        textPresent: true,
       });
     }
 
@@ -672,8 +707,7 @@ export class Orchestrator {
       case 'command_started':
         this.appendTimeline(task.id, run.id, event.type, {
           commandId: event.commandId,
-          command: event.command,
-          cwd: event.cwd,
+          commandPresent: event.command.length > 0,
         });
         return;
       case 'command_completed':
@@ -712,41 +746,10 @@ export class Orchestrator {
         this.appendTimeline(task.id, run.id, event.type, { result: event.result });
         return;
       case 'run_failed':
-        outcome.error = event.error;
-        this.appendTimeline(task.id, run.id, event.type, { error: event.error });
+        outcome.error = safeAgentFailure(event.error);
+        this.appendTimeline(task.id, run.id, event.type, { error: outcome.error });
         return;
     }
-  }
-
-  // ---------- prompts ----------
-
-  private planningPrompt(task: Task): string {
-    return [
-      task.request,
-      '',
-      'Act as the project planner. If essential information is missing, return one concise clarification question. Otherwise return a concrete implementation plan.',
-      'For kind "plan", include title, summary, and steps. For kind "clarification", include question. Do not include fields for the other kind.',
-    ].join('\n');
-  }
-
-  private implementPrompt(task: Task): string {
-    const plan = task.plan;
-    return [
-      `Task: ${task.request}`,
-      plan ? `Plan: ${plan.title}\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` : '',
-      'Safety boundary: modify files only inside the registered project root. Do not write to OS temporary directories or any outside path.',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-  }
-
-  private revisePrompt(task: Task): string {
-    const last = task.reviews[task.reviews.length - 1];
-    return [
-      `Task: ${task.request}`,
-      `Review round ${last?.round ?? '?'} requested changes:\n- ${(last?.changeRequests ?? []).join('\n- ')}`,
-      'Safety boundary: modify files only inside the registered project root. Do not write to OS temporary directories or any outside path.',
-    ].join('\n\n');
   }
 
   /**
@@ -882,6 +885,6 @@ function validateExecutionLimits(limits: ExecutionLimitsInput): ExecutionLimitsI
 }
 
 function formatTests(passed: boolean | null): string {
-  if (passed === null) return 'not reported';
-  return passed ? 'passed' : 'FAILED';
+  if (passed === null) return '확인 불가';
+  return passed ? '통과' : '실패';
 }

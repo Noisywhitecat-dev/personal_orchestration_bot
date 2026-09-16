@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { AgentEvent, AgentResult } from '../../domain/agent-events.js';
 import { asSessionId, type IsoTimestamp, type RunId } from '../../domain/ids.js';
 import { UNAVAILABLE_USAGE, type UsageSnapshot } from '../../domain/usage.js';
@@ -31,6 +32,18 @@ import { UNAVAILABLE_USAGE, type UsageSnapshot } from '../../domain/usage.js';
  * - exactly one usage_reported per run, always emitted before the terminal event
  *   (`unavailable` when the CLI reported nothing)
  */
+
+export const ImplementationResultSchema = z
+  .object({
+    kind: z.literal('implementation'),
+    summary: z.string().trim().min(1).max(8000),
+    changedFiles: z.array(z.string().min(1)).max(500),
+    testsPassed: z.boolean().nullable(),
+    verificationResults: z.array(z.string().min(1)).max(100).optional(),
+    deviations: z.array(z.string().min(1)).max(100).optional(),
+    remainingRisks: z.array(z.string().min(1)).max(100).optional(),
+  })
+  .strict();
 
 const MAX_TAIL = 2_000;
 const MAX_SUMMARY = 2_000;
@@ -130,6 +143,7 @@ export interface ParserState {
 }
 
 export class CodexJsonlParser {
+  private invalidStructuredResult = false;
   readonly state: ParserState = {
     sessionId: null,
     usageReported: false,
@@ -317,7 +331,17 @@ export class CodexJsonlParser {
     if (this.state.pendingError) {
       out.push({ ...this.base(), type: 'run_failed', error: this.state.pendingError });
     } else {
-      out.push({ ...this.base(), type: 'run_completed', result: this.buildResult() });
+      const result = this.buildResult();
+      if (this.invalidStructuredResult)
+        out.push({
+          ...this.base(),
+          type: 'run_failed',
+          error: {
+            code: 'AGENT_RESULT_INVALID',
+            message: 'Invalid structured implementation result.',
+          },
+        });
+      else out.push({ ...this.base(), type: 'run_completed', result });
     }
     return out;
   }
@@ -336,6 +360,25 @@ export class CodexJsonlParser {
   }
 
   buildResult(): AgentResult {
+    const text = this.state.lastMessage
+      .trim()
+      .replace(/^```(?:json)?\s*\n([\s\S]*?)\n\s*```$/, '$1');
+    try {
+      const parsed = ImplementationResultSchema.safeParse(JSON.parse(text) as unknown);
+      if (parsed.success)
+        return {
+          ...parsed.data,
+          changedFiles: this.state.changedFiles.length
+            ? [...this.state.changedFiles]
+            : parsed.data.changedFiles,
+          testsPassed: this.state.testsPassed ?? parsed.data.testsPassed,
+        };
+      this.invalidStructuredResult = true;
+    } catch {
+      this.invalidStructuredResult =
+        text.startsWith('{') ||
+        this.state.lastMessage.trim().startsWith('```json'); /* Legacy prose remains compatible. */
+    }
     const summary = this.state.lastMessage.trim().length
       ? this.state.lastMessage.trim().slice(0, MAX_SUMMARY)
       : 'Codex run completed.';

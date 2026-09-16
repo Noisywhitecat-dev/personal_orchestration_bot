@@ -1,9 +1,10 @@
 import type { IsoTimestamp, RunId, SessionId } from './ids.js';
 import type { UsageSnapshot } from './usage.js';
+import type { TaskPlan } from './task.js';
 
 /** Structured outputs an agent run can produce. Adapters must parse provider output into one of these. */
 export type AgentResult =
-  | { kind: 'plan'; title: string; summary: string; steps: string[] }
+  | ({ kind: 'plan' } & TaskPlan)
   | { kind: 'clarification'; question: string }
   | {
       kind: 'implementation';
@@ -11,6 +12,9 @@ export type AgentResult =
       changedFiles: string[];
       /** null when the agent did not run tests or did not report the outcome. */
       testsPassed: boolean | null;
+      verificationResults?: string[] | undefined;
+      deviations?: string[] | undefined;
+      remainingRisks?: string[] | undefined;
     }
   | {
       kind: 'review';
@@ -38,8 +42,8 @@ export type AgentEvent =
       type: 'command_completed';
       commandId: string;
       exitCode: number | null;
-      stdoutTail?: string;
-      stderrTail?: string;
+      stdoutTail?: string | undefined;
+      stderrTail?: string | undefined;
     })
   | (Base & { type: 'usage_reported'; usage: UsageSnapshot })
   | (Base & { type: 'run_completed'; result: AgentResult })

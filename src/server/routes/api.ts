@@ -1,4 +1,7 @@
-import { realpathSync } from 'node:fs';
+import { z } from 'zod';
+import { installHarness, previewHarness } from '../../infrastructure/harness/project-harness.js';
+import type { PreflightResult } from '../../shared/project-tools.js';
+import { realpathSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 
 import type { ZodType } from 'zod';
@@ -36,6 +39,7 @@ export interface ApiRequest {
   body: unknown;
   orchestrator: Orchestrator;
   runtimeStatus: RuntimeStatusResponse;
+  preflight?: (root: string) => Promise<PreflightResult>;
   ids: { asProjectId: (s: string) => ProjectId; asTaskId: (s: string) => TaskId };
 }
 
@@ -63,7 +67,9 @@ export function canonicalProjectRoot(input: string): string {
     throw new OrchestrationError('INVALID_PROJECT_ROOT', 'Project root must be an absolute path.');
   }
   try {
-    return realpathSync.native(resolve(input));
+    const root = realpathSync.native(resolve(input));
+    if (!statSync(root).isDirectory()) throw new Error('not directory');
+    return root;
   } catch {
     throw new OrchestrationError(
       'INVALID_PROJECT_ROOT',
@@ -92,6 +98,18 @@ export async function handleApi(req: ApiRequest): Promise<ApiResult> {
     return { status: 200, body: runtimeStatus };
   }
 
+  if (seg[1] === 'projects' && seg.length === 4 && seg[2]) {
+    const project = orchestrator.listProjects().find((p) => p.id === ids.asProjectId(seg[2]!));
+    if (!project) throw new OrchestrationError('PROJECT_NOT_FOUND', '프로젝트를 찾을 수 없습니다.');
+    if (seg[3] === 'harness' && method === 'GET')
+      return { status: 200, body: previewHarness(project.rootPath) };
+    if (seg[3] === 'harness' && method === 'POST') {
+      parse(z.object({ confirm: z.literal(true) }).strict(), body);
+      return { status: 200, body: installHarness(project.rootPath) };
+    }
+    if (seg[3] === 'preflight' && method === 'POST' && req.preflight)
+      return { status: 200, body: await req.preflight(project.rootPath) };
+  }
   if (seg[1] === 'projects') {
     if (seg.length === 2 && method === 'GET') {
       return { status: 200, body: { projects: orchestrator.listProjects() } };

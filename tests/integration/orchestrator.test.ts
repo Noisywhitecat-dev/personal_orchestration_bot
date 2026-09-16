@@ -188,7 +188,7 @@ describe('Orchestrator: timeline and recovery', () => {
     expect(types).not.toContain('message_delta');
   });
 
-  it('recoverInterrupted fails mid-run tasks and restarts queued ones', async () => {
+  it('recoverInterrupted closes interrupted tasks without starting queued AI calls', async () => {
     const { orchestrator, repos, project } = setup();
     const t1 = await submitAndPlan(orchestrator, project.id, 'one');
     const t2 = await submitAndPlan(orchestrator, project.id, 'two');
@@ -204,8 +204,9 @@ describe('Orchestrator: timeline and recovery', () => {
     // t4 stays awaiting_approval.
 
     const result = orchestrator.recoverInterrupted();
-    expect(result.failed).toEqual([t1.id, t3.id]);
-    expect(result.restarted).toEqual([t2.id]);
+    expect(result.failed).toEqual([t1.id, t2.id, t3.id]);
+    expect(result.restarted).toEqual([]);
+    expect(orchestrator.getTask(t2.id).failure?.code).toBe('INTERRUPTED');
     expect(orchestrator.getTask(t1.id).failure?.code).toBe('INTERRUPTED');
     expect(orchestrator.getTask(t3.id).state).toBe('failed');
     expect(orchestrator.getTask(t3.id).failure?.code).toBe('INTERRUPTED');
@@ -217,6 +218,7 @@ describe('Orchestrator: timeline and recovery', () => {
     expect(orchestrator.recoverInterrupted()).toEqual({ restarted: [], failed: [] });
 
     await orchestrator.whenSettled(t2.id);
-    expect(orchestrator.getTask(t2.id).state).toBe('completed');
+    expect(orchestrator.getTask(t2.id).state).toBe('cancelled');
+    expect(orchestrator.listRuns(t2.id)).toHaveLength(1);
   });
 });

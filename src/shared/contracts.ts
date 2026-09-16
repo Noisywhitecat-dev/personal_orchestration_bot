@@ -73,6 +73,18 @@ export function toPublicTaskEvent(event: TaskEvent): TaskEvent {
   if (event.type === 'session_started') {
     return { ...event, payload: { sessionPresent: true } };
   }
+  if (event.type === 'agent_message') {
+    return {
+      ...event,
+      payload: {
+        provider: event.payload['provider'] === 'claude' ? 'claude' : 'codex',
+        textPresent: true,
+      },
+    };
+  }
+  if (event.type === 'command_started') {
+    return { ...event, payload: { commandPresent: true } };
+  }
   if (event.type === 'command_completed') {
     const { stdoutTail, stderrTail, ...safe } = event.payload;
     return {
