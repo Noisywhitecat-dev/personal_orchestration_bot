@@ -6,6 +6,7 @@ import type { AgentAdapter, AgentRunInput } from '../../src/infrastructure/agent
 export class RecordingAdapter implements AgentAdapter {
   readonly provider: AgentAdapter['provider'];
   readonly inputs: AgentRunInput[] = [];
+  readonly resumedSessions: SessionId[] = [];
 
   constructor(private readonly inner: AgentAdapter) {
     this.provider = inner.provider;
@@ -17,6 +18,7 @@ export class RecordingAdapter implements AgentAdapter {
   }
 
   resume(sessionId: SessionId, input: AgentRunInput): AsyncIterable<AgentEvent> {
+    this.resumedSessions.push(sessionId);
     this.inputs.push(input);
     return this.inner.resume(sessionId, input);
   }

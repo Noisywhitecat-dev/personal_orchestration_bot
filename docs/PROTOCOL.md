@@ -84,9 +84,9 @@ interface AgentAdapter {
 
 ## Structured agent results
 
-- Plan: `{ kind: 'plan', title, summary, steps: string[] }` — `steps` must be non-empty
+- Plan: `{ kind: 'plan', title, summary, steps: string[], objective?, scope?, outOfScope?, acceptanceCriteria?, suggestedFiles?, verification?, risks?, riskLevel? }`. New lists contain non-empty strings; riskLevel is low/medium/high. The original title/summary/non-empty steps remain required, so old stored plans remain readable.
 - Clarification: `{ kind: 'clarification', question }` — the question must be non-empty
-- Implementation: `{ kind: 'implementation', summary, changedFiles: string[], testsPassed: boolean | null }`
+- Implementation: `{ kind: 'implementation', summary, changedFiles: string[], testsPassed: boolean | null, verificationResults?: string[], deviations?: string[], remainingRisks?: string[] }`. Structured Codex final JSON is validated; observed test-command outcomes take precedence. Legacy prose remains compatible. Malformed structured reports fail validation.
 - Review: `{ kind: 'review', verdict: 'approve' | 'request_changes', summary, changeRequests: string[] }` — `request_changes` requires at least one change request
 
 ### Codex JSONL boundary
@@ -167,7 +167,7 @@ REST and SSE use public DTOs that remove every session id. They expose only sess
 
 ## Review context (ephemeral)
 
-After a successful `implement` / `revise` run the orchestrator asks a `ReviewContextCollector` for a bounded snapshot of the working tree (git: `status --porcelain -z`, `diff --no-ext-diff --no-textconv --no-color --relative HEAD -- :(literal)path…`, plus untracked text files read directly). The result is embedded into the next review prompt between `<<<BEGIN_UNTRUSTED_REVIEW_CONTEXT>>>` / `<<<END_UNTRUSTED_REVIEW_CONTEXT>>>` markers together with the task, plan, implementation report and previous review rounds.
+After a successful `implement` / `revise` run the orchestrator asks a `ReviewContextCollector` for a bounded snapshot of the working tree (git: `status --porcelain -z`, `diff --no-ext-diff --no-textconv --no-color --relative HEAD -- :(literal)path…`, plus untracked text files read directly). The result is embedded into the next review prompt between `<<<BEGIN_UNTRUSTED_REVIEW_CONTEXT>>>` / `<<<END_UNTRUSTED_REVIEW_CONTEXT>>>` markers together with the approved plan, current implementation report and latest unresolved change requests. The original request and full conversation are not repeated.
 
 - The diff is **not** an `AgentEvent` and is **not** persisted anywhere (no Task/Run/Message/TaskEvent/usage/SSE/log). It exists only inside that one prompt string.
 - A fresh snapshot is collected for every round; nothing from an earlier round is reused.
@@ -190,3 +190,25 @@ After a successful `implement` / `revise` run the orchestrator asks a `ReviewCon
 ## Review loop bound
 
 `Task.reviewRound` increments each time a review completes. If the verdict is `request_changes` and `reviewRound >= task.maxReviewRounds`, the task fails with `REVIEW_ROUNDS_EXCEEDED` and the user is notified.
+
+## M17 project tools and privacy
+
+- GET /api/projects/:id/harness: version, fixed relative file list, proposed template contents and
+  missing/installed/conflict/blocked/outdated status. Existing file content is never returned.
+- POST /api/projects/:id/harness: strict body `{confirm:true}`. Uses only the stored project root;
+  returns created/skipped paths and refreshed preview. Existing files always remain untouched.
+- POST /api/projects/:id/preflight: path/Git/version/auth/model/effort/harness classifications and user guidance.
+  No generation command or login mutation; stdout/stderr and credentials are neither persisted nor exposed.
+- Browser POST requires same-origin when Origin is supplied. No CORS permission is added.
+- Clarification resumes contain answer, current round and a short final-plan instruction. Codex revision resumes
+  contain current changes and preserved acceptance criteria, not the original request/full plan.
+- Installed exact-version role skills are referenced briefly. Missing/conflicting/modified skills do not remove
+  the minimum role/safety instruction. Review context and metadata blocks are treated as untrusted data.
+- New raw provider text and command argv/cwd are discarded at persistence boundaries. Command completion stores
+  only exit/presence metadata. Provider errors are reduced to known codes and Korean recovery guidance.
+  SQLite v4 removes historical agent_message text and command_started content with secure deletion and compaction.
+- Diagnostic export reconstructs an object from whitelisted enums, integer counts and token totals. No arbitrary
+  error text, identifiers, model strings, names, paths, prompts, diff, or command output are copied.
+- On restart, queued/review_requested use the existing cancelled transition with INTERRUPTED metadata;
+  draft/implementing/reviewing/changes_requested fail INTERRUPTED; approved completes without a provider call.
+  Awaiting clarification/approval remain user-gated. Shutdown aborts and drains pipelines before DB close.

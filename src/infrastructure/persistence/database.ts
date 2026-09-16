@@ -97,6 +97,11 @@ const MIGRATIONS: readonly string[] = [
   SET payload_json = json_remove(payload_json, '$.stdoutTail', '$.stderrTail')
   WHERE type = 'command_completed' AND json_valid(payload_json);
   `,
+  // v4 — retain only presence metadata for raw provider messages and command argv/cwd.
+  `
+  UPDATE task_events SET payload_json = json_object('textPresent', json('true')) WHERE type = 'agent_message';
+  UPDATE task_events SET payload_json = json_object('commandPresent', json('true')) WHERE type = 'command_started';
+  `,
 ];
 
 export function openDatabase(path: string): DatabaseSync {
@@ -110,7 +115,7 @@ export function openDatabase(path: string): DatabaseSync {
 export function migrate(db: DatabaseSync): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
   let version = row.user_version;
-  const needsCommandOutputPurge = version < 3;
+  const needsCommandOutputPurge = version < 4;
   while (version < MIGRATIONS.length) {
     const sql = MIGRATIONS[version];
     if (sql === undefined) break;
@@ -125,8 +130,8 @@ export function migrate(db: DatabaseSync): number {
     }
     version += 1;
   }
-  if (needsCommandOutputPurge && version >= 3) {
-    // v3 removes potentially sensitive command tails. Compact once so old cell bytes and WAL pages
+  if (needsCommandOutputPurge && version >= 4) {
+    // v3/v4 remove potentially sensitive command tails and raw provider text. Compact once so old cell bytes and WAL pages
     // cannot retain the removed text in the database file.
     db.exec('PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE);');
   }

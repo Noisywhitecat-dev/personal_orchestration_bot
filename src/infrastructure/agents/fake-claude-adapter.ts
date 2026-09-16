@@ -1,9 +1,12 @@
+import { setTimeout as pause } from 'node:timers/promises';
 import type { AgentEvent } from '../../domain/agent-events.js';
 import { asSessionId, type RunId, type SessionId, type TaskId } from '../../domain/ids.js';
 import type { Clock, IdGenerator } from '../../domain/ports.js';
 import type { AgentAdapter, AgentRunInput } from './agent-adapter.js';
 
 export interface FakeClaudeOptions {
+  /** Optional presentation delay. Tests default to zero; no external process. */
+  delayMs?: number;
   /**
    * How many times to answer `request_changes` before approving, per task.
    * A prompt containing `[fake-changes:N]` overrides this for that task.
@@ -22,6 +25,7 @@ const CLARIFY_MARKER = /\[fake-clarify:(\d+)\]/;
  */
 export class FakeClaudeAdapter implements AgentAdapter {
   readonly provider = 'claude' as const;
+  private readonly changeTargets = new Map<TaskId, number>();
   private readonly reviewCounts = new Map<TaskId, number>();
   private readonly clarificationCounts = new Map<TaskId, number>();
   private readonly clarificationTargets = new Map<TaskId, number>();
@@ -49,6 +53,12 @@ export class FakeClaudeAdapter implements AgentAdapter {
   private async *run(sessionId: SessionId, input: AgentRunInput): AsyncGenerator<AgentEvent> {
     const base = () => ({ runId: input.runId, timestamp: this.clock.now() });
     yield { ...base(), type: 'session_started', sessionId };
+    try {
+      if (this.options.delayMs)
+        await pause(this.options.delayMs, undefined, { signal: input.signal });
+    } catch {
+      /* cancellation checked below */
+    }
 
     if (this.isCancelled(input)) {
       yield {
@@ -60,6 +70,8 @@ export class FakeClaudeAdapter implements AgentAdapter {
     }
 
     if (input.kind === 'plan') {
+      if (!this.changeTargets.has(input.taskId))
+        this.changeTargets.set(input.taskId, this.changeLimit(input.prompt));
       yield { ...base(), type: 'reasoning_delta', text: 'Analyzing request…' };
       yield { ...base(), type: 'message_delta', text: 'Here is the plan.' };
       yield {
@@ -89,7 +101,7 @@ export class FakeClaudeAdapter implements AgentAdapter {
           type: 'run_completed',
           result: {
             kind: 'clarification',
-            question: `Clarification ${round}: what constraint should Claude use?`,
+            question: `추가 질문 ${round}: 꼭 지켜야 할 조건을 알려주세요.`,
           },
         };
         return;
@@ -101,8 +113,16 @@ export class FakeClaudeAdapter implements AgentAdapter {
         result: {
           kind: 'plan',
           title,
-          summary: `Implement: ${title}`,
-          steps: ['Inspect relevant files', 'Implement the change', 'Add or update tests'],
+          summary: `요청을 구현합니다: ${title}`,
+          objective: title,
+          scope: ['관련 소스와 인접 테스트'],
+          outOfScope: ['요청과 무관한 변경'],
+          acceptanceCriteria: ['요청한 동작을 구현하고 검증 결과를 보고한다'],
+          suggestedFiles: ['src/feature.ts', 'src/feature.test.ts'],
+          verification: ['관련 테스트 실행'],
+          risks: ['체험 결과는 실제 코드 변경이 아닙니다'],
+          riskLevel: 'low',
+          steps: ['관련 파일 확인', '요청 기능 구현', '테스트와 검토'],
         },
       };
       return;
@@ -111,7 +131,7 @@ export class FakeClaudeAdapter implements AgentAdapter {
     if (input.kind === 'review') {
       const count = (this.reviewCounts.get(input.taskId) ?? 0) + 1;
       this.reviewCounts.set(input.taskId, count);
-      const limit = this.changeLimit(input.prompt);
+      const limit = this.changeTargets.get(input.taskId) ?? this.changeLimit(input.prompt);
       const requestChanges = count <= limit;
 
       yield { ...base(), type: 'message_delta', text: 'Reviewing diff and test results…' };
@@ -134,10 +154,17 @@ export class FakeClaudeAdapter implements AgentAdapter {
           ? {
               kind: 'review',
               verdict: 'request_changes',
-              summary: `Round ${count}: changes needed.`,
-              changeRequests: [`Fix issue #${count} found in review`],
+              summary: `검토 ${count}회: 수정할 항목이 있습니다.`,
+              changeRequests: [
+                `검토에서 발견한 ${count}번 문제를 수정하고 관련 테스트를 확인하세요`,
+              ],
             }
-          : { kind: 'review', verdict: 'approve', summary: 'Looks good.', changeRequests: [] },
+          : {
+              kind: 'review',
+              verdict: 'approve',
+              summary: '수용 조건과 검증 결과를 확인했습니다.',
+              changeRequests: [],
+            },
       };
       return;
     }
@@ -161,6 +188,14 @@ export class FakeClaudeAdapter implements AgentAdapter {
 }
 
 function firstLine(text: string): string {
+  const match = /<<<BEGIN_UNTRUSTED_REQUEST>>>\n([^\n]+)/.exec(text);
+  if (match?.[1]) {
+    try {
+      return JSON.parse(match[1]) as string;
+    } catch {
+      /* old prompt */
+    }
+  }
   return text.split('\n')[0]?.trim() ?? '';
 }
 

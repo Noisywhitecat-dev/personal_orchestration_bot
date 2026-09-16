@@ -89,7 +89,7 @@ describe('background planning', () => {
     expect(task.claudeSessionId).not.toBeNull();
     const claudeMsgs = orchestrator.listMessages(project.id).filter((m) => m.role === 'claude');
     expect(claudeMsgs).toHaveLength(1);
-    expect(claudeMsgs[0]?.content).toContain('Approve to send to Codex');
+    expect(claudeMsgs[0]?.content).toContain(task.plan!.summary);
     expect(orchestrator.listRuns(draft.id)[0]?.status).toBe('completed');
     expect(orchestrator.taskUsage(draft.id).claude.totalTokens).toBe(200);
     expect(taskStates(events)).toEqual(['draft', 'draft', 'draft', 'awaiting_approval']);
@@ -97,7 +97,7 @@ describe('background planning', () => {
     expect(events.filter((e) => e.type === 'system_error')).toHaveLength(0);
   });
 
-  it('planner failure → failed with the planner error preserved', async () => {
+  it('planner failure → failed with the provider error safely classified', async () => {
     const { orchestrator, claude, project } = setup();
     const draft = await orchestrator.submitRequest(project.id, 'x');
     await claude.waitForPending();
@@ -105,7 +105,8 @@ describe('background planning', () => {
     await orchestrator.whenSettled(draft.id);
     const task = orchestrator.getTask(draft.id);
     expect(task.state).toBe('failed');
-    expect(task.failure).toEqual({ code: 'PLANNER_DOWN', message: 'quota exhausted' });
+    expect(task.failure?.code).toBe('AGENT_RUN_FAILED');
+    expect(task.failure?.message).not.toContain('quota exhausted');
     expect(orchestrator.listRuns(draft.id)[0]?.status).toBe('failed');
   });
 

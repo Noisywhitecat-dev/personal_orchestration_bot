@@ -52,6 +52,14 @@ export const PlanResultSchema = z
     title: nonEmpty,
     summary: nonEmpty,
     steps: z.array(nonEmpty).min(1),
+    objective: nonEmpty.optional(),
+    scope: z.array(nonEmpty).optional(),
+    outOfScope: z.array(nonEmpty).optional(),
+    acceptanceCriteria: z.array(nonEmpty).optional(),
+    suggestedFiles: z.array(nonEmpty).optional(),
+    verification: z.array(nonEmpty).optional(),
+    risks: z.array(nonEmpty).optional(),
+    riskLevel: z.enum(['low', 'medium', 'high']).optional(),
   })
   .strict();
 
@@ -98,6 +106,14 @@ export const PLAN_JSON_SCHEMA = {
       items: { type: 'string', minLength: 1 },
       description: 'Required when kind is plan.',
     },
+    objective: { type: 'string', minLength: 1 },
+    scope: { type: 'array', items: { type: 'string', minLength: 1 } },
+    outOfScope: { type: 'array', items: { type: 'string', minLength: 1 } },
+    acceptanceCriteria: { type: 'array', items: { type: 'string', minLength: 1 } },
+    suggestedFiles: { type: 'array', items: { type: 'string', minLength: 1 } },
+    verification: { type: 'array', items: { type: 'string', minLength: 1 } },
+    risks: { type: 'array', items: { type: 'string', minLength: 1 } },
+    riskLevel: { type: 'string', enum: ['low', 'medium', 'high'] },
     question: {
       type: 'string',
       minLength: 1,

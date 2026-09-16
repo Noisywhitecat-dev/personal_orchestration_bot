@@ -7,6 +7,7 @@ import { OrchestrationError } from '../domain/errors.js';
 import { asProjectId, asTaskId } from '../domain/ids.js';
 import { handleApi, HttpError } from './routes/api.js';
 import { attachSse } from './events/sse.js';
+import type { PreflightResult } from '../shared/project-tools.js';
 import type { RuntimeStatusResponse } from '../shared/contracts.js';
 
 export interface AppOptions {
@@ -14,6 +15,7 @@ export interface AppOptions {
   /** Directory of the built web UI (dist/web). Optional in dev, where Vite serves it. */
   staticDir?: string;
   runtimeStatus?: RuntimeStatusResponse;
+  preflight?: (root: string) => Promise<PreflightResult>;
 }
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -73,6 +75,15 @@ export function createApp(opts: AppOptions): Server {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const method = req.method ?? 'GET';
 
+    // Reject cross-origin browser writes before any file or orchestration mutation.
+    if (
+      method === 'POST' &&
+      req.headers.origin &&
+      req.headers.origin !== `http://${req.headers.host}`
+    ) {
+      sendJson(res, 403, { error: { code: 'FORBIDDEN', message: '앱에서 다시 시도하세요.' } });
+      return;
+    }
     if (url.pathname === '/api/events' && method === 'GET') {
       attachSse(req, res, orchestrator.bus);
       return;
@@ -87,6 +98,7 @@ export function createApp(opts: AppOptions): Server {
           body,
           orchestrator,
           runtimeStatus,
+          ...(opts.preflight ? { preflight: opts.preflight } : {}),
           ids: { asProjectId, asTaskId },
         });
         sendJson(res, result.status, result.body);

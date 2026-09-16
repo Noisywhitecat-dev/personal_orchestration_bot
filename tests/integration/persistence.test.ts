@@ -40,8 +40,8 @@ function boot(dbPath: string, idPrefix: string) {
 describe('SQLite persistence', () => {
   it('migrations are idempotent', () => {
     const db = openDatabase(':memory:');
-    expect(migrate(db)).toBe(3);
-    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(4);
+    expect(migrate(db)).toBe(4);
     db.close();
   });
 
@@ -63,7 +63,7 @@ describe('SQLite persistence', () => {
       INSERT INTO projects VALUES ('p', 'old', 'D:/old', '2026-01-01');
       INSERT INTO tasks VALUES ('t', 'p', 'old request', 'awaiting_approval', NULL, 0, 2, '[]', NULL, NULL, NULL, '2026-01-01', '2026-01-01');
     `);
-    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(4);
     const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get('t') as Record<string, unknown>;
     expect(row['request']).toBe('old request');
     expect(row['clarification_round']).toBe(0);
@@ -98,7 +98,7 @@ describe('SQLite persistence', () => {
       '2026-01-01',
       1,
     );
-    expect(migrate(db)).toBe(3);
+    expect(migrate(db)).toBe(4);
     const row = db.prepare('SELECT payload_json FROM task_events').get() as {
       payload_json: string;
     };

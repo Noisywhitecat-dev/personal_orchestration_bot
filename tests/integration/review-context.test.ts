@@ -169,13 +169,13 @@ describe('review context in the orchestrator', () => {
     const [prompt] = s.claude.prompts('review');
     if (!prompt) throw new Error('no review prompt');
     expect(prompt).toContain('READ-ONLY code reviewer');
-    expect(prompt).toContain('## User request\nAdd a logout button');
-    expect(prompt).toContain('Title: Add a logout button');
-    expect(prompt).toContain('1. Inspect relevant files');
+    expect(prompt).not.toContain('## User request');
+    expect(prompt).toContain(JSON.stringify('Add a logout button'));
+    expect(prompt).toContain('"steps":[');
     expect(prompt).toContain('Review round 1 of 2');
-    expect(prompt).toContain('Summary: Implemented the plan.');
-    expect(prompt).toContain('Reported changed files: src/feature.ts, src/feature.test.ts');
-    expect(prompt).toContain('Reported tests: passed');
+    expect(prompt).toContain('"summary":');
+    expect(prompt).toContain('"changedFiles":["src/feature.ts","src/feature.test.ts"]');
+    expect(prompt).toContain('"testsPassed":true');
     expect(prompt).toContain('Diff status: available');
     expect(prompt).toContain(BEGIN_MARKER);
     expect(prompt).toContain(END_MARKER);
@@ -195,9 +195,8 @@ describe('review context in the orchestrator', () => {
     expect(s.claude.prompts('review')[0]).toContain(DIFF_SECRET);
     expect(persistedText(s, task.id)).not.toContain(DIFF_SECRET);
     const codexMsg = s.orchestrator.listMessages(s.project.id).find((m) => m.role === 'codex');
-    expect(codexMsg?.content).toBe(
-      'Implemented the plan.\nChanged: src/feature.ts, src/feature.test.ts\nTests: passed',
-    );
+    expect(codexMsg?.content).toContain('src/feature.ts');
+    expect(codexMsg?.content).not.toContain(DIFF_SECRET);
   });
 
   it('unavailable context still lets the review run and is stated in the prompt', async () => {
@@ -208,7 +207,8 @@ describe('review context in the orchestrator', () => {
     const task = await runToEnd(s.orchestrator, s.project.id);
     expect(task.state).toBe('completed');
     const [prompt] = s.claude.prompts('review');
-    expect(prompt).toContain('Diff status: UNAVAILABLE. Not a git repository; no diff collected.');
+    expect(prompt).toContain('Diff status: UNAVAILABLE');
+    expect(prompt).toContain('Not a git repository; no diff collected.');
     expect(prompt).toContain('(no diff content)');
     expect(s.events.filter((e) => e.type === 'system_error')).toHaveLength(0);
   });
@@ -230,7 +230,10 @@ describe('review context in the orchestrator', () => {
     const [prompt] = s.claude.prompts('review');
     expect(prompt).toContain('Diff status: AVAILABLE BUT TRUNCATED (12 bytes shown)');
     expect(prompt).toContain(
-      'Omitted from the diff (path: reason): .env: sensitive; img.png: binary',
+      JSON.stringify([
+        { path: '.env', reason: 'sensitive' },
+        { path: 'img.png', reason: 'binary' },
+      ]),
     );
   });
 
@@ -259,8 +262,8 @@ describe('review context in the orchestrator', () => {
     expect(prompts[1]).toContain('DIFF-ROUND-2');
     expect(prompts[1]).not.toContain('DIFF-ROUND-1');
     expect(prompts[1]).toContain('Review round 2 of 2');
-    expect(prompts[1]).toContain('Round 1: request_changes');
-    expect(prompts[1]).toContain('requested: Fix issue #1 found in review');
+    expect(prompts[1]).toContain('BEGIN_UNTRUSTED_OPEN_ITEMS');
+    expect(prompts[1]).toContain(s.orchestrator.getTask(task.id).reviews[0]!.changeRequests[0]);
     expect(persistedText(s, task.id)).not.toContain('DIFF-ROUND');
   });
 
@@ -393,8 +396,8 @@ describe('buildReviewPrompt', () => {
       context: { ...unavailableReviewContext('n/a'), status: 'empty', warning: null },
       previousReviews: [],
     });
-    expect(prompt).toContain('(no plan recorded)');
-    expect(prompt).toContain('(no implementation report available)');
+    expect(prompt).toContain('<<<BEGIN_UNTRUSTED_PLAN>>>\nnull');
+    expect(prompt).toContain('<<<BEGIN_UNTRUSTED_REPORT>>>\nnull');
     expect(prompt).toContain('Diff status: EMPTY');
   });
 });

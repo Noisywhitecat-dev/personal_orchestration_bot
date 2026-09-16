@@ -1,3 +1,6 @@
+import { installedRoleInstruction } from '../infrastructure/harness/project-harness.js';
+import { preflight } from '../infrastructure/preflight.js';
+import type { ModelCatalog } from '../shared/model-catalog.js';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
@@ -30,6 +33,7 @@ import type { ExecutableStatus, RuntimeStatusResponse } from '../shared/contract
 import { createApp } from './app.js';
 
 export interface ApplicationServerOptions {
+  modelCatalog?: ModelCatalog;
   /** Defaults to loopback only. Use an explicit value to opt into another interface. */
   host?: string;
   /** Zero asks the OS for a free port. */
@@ -99,7 +103,7 @@ function selectClaudeAdapter(
   const mode = env['CLAUDE_ADAPTER'] ?? 'fake';
   if (mode === 'fake') {
     return {
-      adapter: new FakeClaudeAdapter(systemClock, ids),
+      adapter: new FakeClaudeAdapter(systemClock, ids, { delayMs: 500 }),
       label: 'fake',
       mode,
       timeoutMs: 600_000,
@@ -160,7 +164,7 @@ function selectCodexAdapter(
   const mode = env['CODEX_ADAPTER'] ?? 'fake';
   if (mode === 'fake') {
     return {
-      adapter: new FakeCodexAdapter(systemClock, ids),
+      adapter: new FakeCodexAdapter(systemClock, ids, { delayMs: 500 }),
       label: 'fake',
       mode,
       timeoutMs: 900_000,
@@ -256,6 +260,7 @@ export async function startApplicationServer(
     repos: createSqliteRepositories(db),
     defaultExecutionLimits,
     reviewContext,
+    roleSkill: installedRoleInstruction,
   });
   const recovery = orchestrator.recoverInterrupted();
   if (recovery.failed.length || recovery.restarted.length) {
@@ -287,6 +292,14 @@ export async function startApplicationServer(
   const server = createApp({
     orchestrator,
     runtimeStatus,
+    preflight: (root) =>
+      preflight(
+        root,
+        runtimeStatus,
+        { claude: env['CLAUDE_EXECUTABLE'] ?? 'claude', codex: env['CODEX_EXECUTABLE'] ?? 'codex' },
+        undefined,
+        options.modelCatalog,
+      ),
     ...(staticDir ? { staticDir } : {}),
   });
 
@@ -326,9 +339,12 @@ export async function startApplicationServer(
     close: async () => {
       if (closed) return;
       closed = true;
-      await new Promise<void>((resolveClose, rejectClose) => {
+      const closedServer = new Promise<void>((resolveClose, rejectClose) => {
         server.close((error) => (error ? rejectClose(error) : resolveClose()));
+        server.closeAllConnections();
       });
+      await orchestrator.shutdown();
+      await closedServer;
       db.close();
     },
   };
