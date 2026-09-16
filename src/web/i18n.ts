@@ -53,6 +53,7 @@ const TIMELINE_TYPE_LABELS: Record<string, string> = {
   usage_reported: '사용량 기록',
   budget_blocked: '사용 한도 차단',
   result: '결과 수신',
+  run_completed: '실행 결과 수신',
   run_failed: 'AI 실행 실패',
 };
 

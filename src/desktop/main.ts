@@ -197,11 +197,11 @@ async function createMainWindow(): Promise<void> {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 860,
-    minHeight: 620,
+    minWidth: 520,
+    minHeight: 520,
     show: false,
     title: 'AI 오케스트레이터',
-    backgroundColor: '#10131a',
+    backgroundColor: '#f7f8fa',
     webPreferences: {
       preload: join(appRoot(), 'dist', 'desktop', 'preload.cjs'),
       contextIsolation: true,
@@ -231,6 +231,7 @@ function startEmbeddedServer(settings: DesktopSettings): Promise<RunningApplicat
     databasePath: join(app.getPath('userData'), 'orchestration.db'),
     staticDir: join(appRoot(), 'dist', 'web'),
     env: desktopEnvironment(settings),
+    modelCatalog,
     log: (line) => console.log(line),
   });
 }

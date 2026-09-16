@@ -4,16 +4,8 @@ export type DesktopAdapterMode = 'fake' | 'cli';
 export type ClaudeEffort = '' | ModelEffort;
 export type CodexEffort = '' | ModelEffort;
 
-export interface DesktopSettings {
-  claudeAdapter: DesktopAdapterMode;
-  codexAdapter: DesktopAdapterMode;
-  claudeExecutable: string;
-  codexExecutable: string;
-  claudeModel: string;
-  claudeEffort: ClaudeEffort;
-  codexModel: string;
-  codexEffort: CodexEffort;
-}
+export type { DesktopSettings } from '../desktop/settings.js';
+import type { DesktopSettings } from '../desktop/settings.js';
 
 export interface DesktopBridge {
   getSettings: () => Promise<DesktopSettings>;
