@@ -1,6 +1,35 @@
 # STATUS
 
-Last updated: 2026-09-16 (M16 standalone Windows desktop app)
+Last updated: 2026-09-16 (M17 beginner desktop workflow)
+
+## M17 current checkpoint
+
+단일 Codex 구현. 기준 HEAD bd593ab 확인. 실제 AI 호출 0회. 새 의존성 없음.
+채팅 UI/상태 view-model, 최초 안내, 간편/고급 설정, 프로젝트 하네스, 호환 계획/구현 계약,
+짧은 resume, 토큰 없는 점검, 안전한 호출 요약, 진단 내보내기를 구현했다.
+재시작 시 queued 자동 호출을 제거했고 shutdown은 파이프라인 종료 후 DB를 닫는다.
+SQLite v4는 기존 원시 메시지/명령 시작 내용을 제거한다. 상태 머신/기존 실행 한도는 유지한다.
+
+최종 검증: 27개 파일의 테스트 266개 통과. typecheck, lint, format:check, build, git diff --check 통과.
+초기 전체 검사에서 발견한 과거 queued 자동 재시작 기대값은 새 복구 계약으로 수정한 뒤 전체 재검증했다.
+Fake 브라우저에서 등록, 안내, 하네스 7개 생성 및 기존 AGENTS.md 보존, 계획/승인/완료,
+계획·구현·검토 진행 표시와 실패 복구 안내, 상세 접기, 560px 창에서 가로 넘침 없음과 하단 실행 버튼을 확인했다. 콘솔 오류 없음.
+설정 렌더러는 격리된 개발 셸(실제 product settings/bootstrap, 브라우저 IPC 대역)로 검증했다.
+안내 완료 상태와 Sonnet medium/GPT-5.5 xhigh 및 Claude 실행 한도 4가 저장과 재시작 후 유지됐다.
+별도 production main lifecycle 테스트는 Electron 창만 대역으로 사용하고 실제 서버 재시작/포트 변경을 확인한다.
+npm run desktop:dist 통과: app-release/AI Orchestrator-0.1.0-x64.exe.
+최초 패키징의 네트워크 제한은 승인된 다운로드 재시도로 해소했다.
+현재 설치된 CLI 버전만 토큰 없이 확인했다: Codex 0.154.0-alpha.6.2, Claude Code 2.1.271.
+Claude는 기본 PATH에서 찾지 못해 설치된 실행 파일의 절대 경로로 확인했다.
+남은 검증 범위: 실제 AI 응답과 패키지 네이티브 창 수동 조작은 이번 작업에서 수행하지 않았다.
+동시에 다른 프로세스가 대상 디렉터리를 교체하는 공격까지 완전히 차단하는 설치기는 아니다.
+
+PR 분리: #16 서버·협업 기반(260개 테스트 및 검사·빌드 독립 통과), 후속 PR 채팅 UI·설정·진단.
+후속 PR은 #16 브랜치를 기반으로 하며 서버 기반을 먼저 병합해야 한다.
+
+## Historical M0–M16 evidence
+
+아래 기록은 당시 결과이며 M17 실환경 검증을 의미하지 않는다. 이번 변경은 실제 AI 호출로 검증하지 않았다.
 
 ## M16 desktop application
 
@@ -205,7 +234,7 @@ Session 6 made **two** user-approved live `claude.exe` planning invocations (2.1
 
 - **State machine** (`src/domain/state-machine.ts`): `TRANSITIONS` table + `assertTransition`. `awaiting_approval → queued` additionally requires `userApproved: true` (`APPROVAL_REQUIRED` otherwise). `resolveReviewVerdict` enforces `maxReviewRounds` → `failed` with `REVIEW_ROUNDS_EXCEEDED`.
 - **Orchestrator** never writes `task.state` directly; only via `transition()`. Pipeline runs in the background after `approve()`; tests use `whenSettled(taskId)`.
-- **Recovery on startup** (`recoverInterrupted`): `queued` tasks restart; `draft` / `implementing` / `reviewing` tasks and their running runs are marked `failed` with `INTERRUPTED`. `draft` is **not** re-planned automatically (would spend tokens unasked). `awaiting_approval` is left as-is. Tasks with a live in-process pipeline are skipped.
+- **Recovery on startup** (`recoverInterrupted`): `queued` tasks are cancelled as INTERRUPTED without a provider call; `draft` / `implementing` / `reviewing` tasks and their running runs are marked `failed` with `INTERRUPTED`. `draft` is **not** re-planned automatically (would spend tokens unasked). `awaiting_approval` is left as-is. Tasks with a live in-process pipeline are skipped.
 - **Usage**: raw `usage_records` rows; aggregates computed on read (`summarizeUsage`) with `hasEstimated` / `hasUnavailable` flags. Unknown = `null`.
 - **Timeline bounding**: `message_delta` coalesced into one `agent_message` entry per run (≤ 8 KB); `reasoning_delta` and command stdout/stderr are not persisted. Command completion keeps only id, exit code, and stream-presence booleans.
 - **Persistence**: `node:sqlite` (`DatabaseSync`) — no native build, sync API, WAL. Version-based migrations via `PRAGMA user_version`; v3 purges legacy command tails with secure-delete/checkpoint/VACUUM. Repositories are synchronous by design.
@@ -568,7 +597,7 @@ src/server/main.ts (CODEX_ADAPTER selection only)   .env.example
 - The `draft` state is visible only briefly with the fake planner; the UI hint ("Claude is preparing a plan…") and the stale-response guard were verified by tests and a manual run, not by observing a slow planner.
 - `cancel()` on a running fake task settles the pipeline first; with real adapters, cancellation relies on the adapter honoring `AbortSignal`.
 - SSE has no replay / `Last-Event-ID`; a client that reconnects reloads via REST (the UI does this on project select).
-- The web `App.tsx` is a single component; no routing, no design system — intentional for MVP.
+- M17 splits App into role-specific components, useWorkspace and state/action view-models.
 - `recoverInterrupted` marks interrupted runs failed rather than attempting resume. Resume-on-restart can be added once real session ids exist.
 - `.claude/launch.json` runs `npm start` (built output). `npm run dev` runs tsx + Vite with a `/api` proxy; the Vite proxy does not forward SSE by default in all configs — verify when first using `dev` (not exercised this session).
 - The flat Claude plan/clarification schema and fresh v3 persistence completed an uninterrupted real
@@ -587,6 +616,6 @@ M0–M10 were built and validated by Claude Code at the user's explicit request.
 
 ## Next exact work
 
-There is no required MVP work remaining. Start a new bounded task before pursuing packaging,
+M17 completion and remaining limitations are tracked in the current checkpoint above. Start a new bounded task before pursuing
 emergency repair, cloud, multi-user authentication, mobile/voice, or additional providers. Any new
 real AI CLI validation requires its own explicit call count and a throwaway target.

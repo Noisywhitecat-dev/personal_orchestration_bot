@@ -1,3 +1,4 @@
+import type { ExecutionLimitsInput } from '../domain/execution-limits.js';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
 import {
@@ -20,6 +21,10 @@ export interface DesktopSettings {
   claudeEffort: ClaudeEffort;
   codexModel: string;
   codexEffort: CodexEffort;
+  executionLimits: ExecutionLimitsInput;
+  claudeTimeoutMs: number;
+  codexTimeoutMs: number;
+  onboardingCompleted: boolean;
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -31,6 +36,17 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   claudeEffort: '',
   codexModel: '',
   codexEffort: '',
+  executionLimits: {
+    maxClaudeRuns: 6,
+    maxCodexRuns: 3,
+    maxClarificationRounds: 3,
+    maxReviewRounds: 2,
+    claudeTokenCeiling: null,
+    codexTokenCeiling: null,
+  },
+  claudeTimeoutMs: 600000,
+  codexTimeoutMs: 900000,
+  onboardingCompleted: false,
 };
 
 function adapterMode(value: unknown): DesktopAdapterMode {
@@ -66,7 +82,33 @@ export function parseDesktopSettings(
     input['codexEffort'],
     catalog,
   );
+  const integer = (value: unknown, fallback: number, max: number) =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= max
+      ? value
+      : fallback;
+  const limits =
+    input['executionLimits'] && typeof input['executionLimits'] === 'object'
+      ? (input['executionLimits'] as Record<string, unknown>)
+      : {};
+  const defaults = DEFAULT_DESKTOP_SETTINGS.executionLimits;
+  const ceiling = (value: unknown) =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null;
   return {
+    executionLimits: {
+      maxClaudeRuns: integer(limits['maxClaudeRuns'], defaults.maxClaudeRuns, 100),
+      maxCodexRuns: integer(limits['maxCodexRuns'], defaults.maxCodexRuns, 100),
+      maxClarificationRounds: integer(
+        limits['maxClarificationRounds'],
+        defaults.maxClarificationRounds,
+        20,
+      ),
+      maxReviewRounds: integer(limits['maxReviewRounds'], defaults.maxReviewRounds, 20),
+      claudeTokenCeiling: ceiling(limits['claudeTokenCeiling']),
+      codexTokenCeiling: ceiling(limits['codexTokenCeiling']),
+    },
+    claudeTimeoutMs: integer(input['claudeTimeoutMs'], 600000, 7200000),
+    codexTimeoutMs: integer(input['codexTimeoutMs'], 900000, 7200000),
+    onboardingCompleted: input['onboardingCompleted'] === true,
     claudeAdapter: adapterMode(input['claudeAdapter']),
     codexAdapter: adapterMode(input['codexAdapter']),
     claudeExecutable: executable(input['claudeExecutable'], 'claude'),
@@ -84,7 +126,11 @@ export function loadDesktopSettings(
 ): DesktopSettings {
   if (!existsSync(path)) return { ...DEFAULT_DESKTOP_SETTINGS };
   try {
-    return parseDesktopSettings(JSON.parse(readFileSync(path, 'utf8')) as unknown, catalog);
+    const value = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    return parseDesktopSettings(
+      { ...value, onboardingCompleted: value['onboardingCompleted'] ?? true },
+      catalog,
+    );
   } catch {
     return { ...DEFAULT_DESKTOP_SETTINGS };
   }
@@ -115,9 +161,23 @@ export function desktopEnvironment(
     CODEX_ADAPTER: settings.codexAdapter,
     CLAUDE_EXECUTABLE: settings.claudeExecutable,
     CODEX_EXECUTABLE: settings.codexExecutable,
-    ...(settings.claudeModel ? { CLAUDE_MODEL: settings.claudeModel } : {}),
-    ...(settings.claudeEffort ? { CLAUDE_EFFORT: settings.claudeEffort } : {}),
-    ...(settings.codexModel ? { CODEX_MODEL: settings.codexModel } : {}),
-    ...(settings.codexEffort ? { CODEX_REASONING_EFFORT: settings.codexEffort } : {}),
+    CLAUDE_MODEL: settings.claudeModel,
+    CLAUDE_TIMEOUT_MS: String(settings.claudeTimeoutMs),
+    CODEX_TIMEOUT_MS: String(settings.codexTimeoutMs),
+    MAX_CLAUDE_RUNS: String(settings.executionLimits.maxClaudeRuns),
+    MAX_CODEX_RUNS: String(settings.executionLimits.maxCodexRuns),
+    MAX_CLARIFICATION_ROUNDS: String(settings.executionLimits.maxClarificationRounds),
+    MAX_REVIEW_ROUNDS: String(settings.executionLimits.maxReviewRounds),
+    CLAUDE_TOKEN_CEILING:
+      settings.executionLimits.claudeTokenCeiling === null
+        ? ''
+        : String(settings.executionLimits.claudeTokenCeiling),
+    CODEX_TOKEN_CEILING:
+      settings.executionLimits.codexTokenCeiling === null
+        ? ''
+        : String(settings.executionLimits.codexTokenCeiling),
+    CLAUDE_EFFORT: settings.claudeEffort,
+    CODEX_MODEL: settings.codexModel,
+    CODEX_REASONING_EFFORT: settings.codexEffort,
   };
 }

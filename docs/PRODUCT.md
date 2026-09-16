@@ -1,56 +1,58 @@
-# Product
+# 제품
 
-## One-line
+AI 개발 도구를 조금 사용해 본 비개발자도 프로젝트 등록, 요청, 계획 확인, 승인, 구현·검토,
+결과 확인을 한 대화 화면에서 진행할 수 있는 개인용 로컬 데스크톱 앱이다.
+Claude Code는 프로젝트 기획과 읽기 전용 검토, Codex는 승인된 코드 구현을 맡는다.
+사용자는 계획과 실행 한도를 결정한다.
 
-A personal, local web application that orchestrates Claude Code (planner / reviewer) and Codex (implementer) on one local development project, with the user as the final approver.
+## 기본 흐름
 
-## Who it is for
+1. 프로젝트 폴더를 등록하고 체험/실제 모드를 선택한다.
+2. 토큰 없는 실행 전 점검에서 경로, Git, CLI 실행/로그인, 모델/노력치, 하네스를 확인한다.
+3. 요청을 보내면 Claude가 구조화된 계획을 만든다. 결과가 달라지는 필수 정보만 한 번에 하나씩 질문한다.
+4. 사용자는 수용 조건, 범위, 검증 방법, 최대 호출 횟수와 토큰 상한을 보고 승인한다.
+5. Codex가 구현하고 실제 검증 결과와 남은 위험을 보고한다.
+6. Claude가 현재의 제한된 diff와 승인 계획을 검토한다. 필요한 수정은 같은 Codex 세션으로 전달한다.
+7. 완료 결과 또는 중단 이유와 다음 행동을 확인한다. 재시작/실패는 자동 AI 호출을 만들지 않는다.
 
-The author and a handful of acquaintances testing it from a personal GitHub repository. Not a hosted service.
+## 초보자 화면
 
-## Roles at runtime
+- 왼쪽: 프로젝트, 최근 작업, 새 프로젝트/새 작업, 앱 설정, 시작 안내.
+- 가운데: 나/Claude/ Codex/시스템 대화, 계획 카드, 현재 단계의 주요 행동 한 개, 큰 하단 입력창.
+- 오른쪽: 현재 단계, 다음 행동, 간단한 사용량. 상세 정보에서 실행/세션 상태, 이벤트, 상세 사용량, 진단 내보내기.
+- 좁은 창: 프로젝트 메뉴를 접고 채팅/실행 버튼을 우선 배치한다. 작업 정보는 대화 아래로 이동한다.
+- 빈 프로젝트, 작업 없음, 실행 중, 추가 답변/계획 승인 대기, 완료, 실패/중단의 안내를 구분한다.
+- 한국어 제어 문구, 키보드 탐색, 포커스 표시, 역할 이름과 색상, 모달 포커스 제한을 제공한다.
 
-| Actor       | Responsibilities                                                                              |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| User        | Registers projects, writes requests, approves/rejects plans, receives escalations             |
-| Claude Code | Conversation, requirement clarification, plan writing, Codex task instructions, result review |
-| Codex       | Implements approved tasks in the project directory, runs tests                                |
-| Program     | Enforces state transitions, review-round limits, persistence, usage accounting                |
+최초 안내는 6단계이며 완료 상태를 저장한다. 기존 설정 사용자에게 다시 강제하지 않는다.
+간편 설정의 자동/절약/균형/품질 우선은 모델·노력치와 실행 횟수를 제안하며 호출을 시작하지 않는다.
+모델/노력치, 횟수, 토큰 상한, 제한 시간은 고급 설정에서 직접 조정한다.
 
-Claude does **not** edit product code at runtime. An emergency-repair path may be added later; it is out of MVP scope.
+## 프로젝트 하네스
 
-## MVP user flow
+등록된 대상 프로젝트별로 버전이 있는 역할 스킬과 협업/검증/맥락 문서를 미리 볼 수 있다.
+설치 버튼을 누를 때만 없는 파일을 생성한다. 기존 AGENTS.md, CLAUDE.md, 스킬과 수정된 관리 파일은
+보존하고 충돌/부분 설치 결과 및 수동 병합 안내를 표시한다. 루트 밖, 심볼릭 링크/정션 경로는 거부한다.
+설치는 선택 사항이며 확인된 역할 스킬이 없으면 최소 역할 지시를 사용한다.
+파일 목록과 사용 방법은 README 및 DESKTOP.md에 기록한다.
 
-1. Register a local project (name + absolute root path).
-2. Type a development request in the chat.
-3. Claude returns either one concise clarification question or a structured plan.
-4. A clarification answer resumes the **same Claude session**; bounded rounds may repeat until a plan is ready.
-5. The user reviews the plan, task run limits, run-boundary token ceilings, and maximum possible follow-up calls, then approves or rejects.
-6. On approval Codex implements; events stream to the timeline.
-7. Task moves to `review_requested`; Claude reviews using the same planning session.
-8. Approve → `completed`. Change requested → recorded and sent back to the **same** Codex session.
-9. Clarification, review, Claude-run, and Codex-run bounds fail safely before an unauthorized next provider call.
-10. Every run records token usage (actual / estimated / unavailable). A token ceiling blocks only at the next run boundary and cannot hard-stop one provider call.
-11. State survives browser refresh and server restart; interrupted active runs become `INTERRUPTED` rather than silently resuming.
+## 사용량·품질·개인정보
 
-## UI (minimal)
+원본 CLI가 보고한 actual/estimated/unavailable을 유지하며 모르는 값을 0으로 표시하지 않는다.
+단계별·작업별·프로젝트 누적 사용량을 제공하고 Fake 값은 체험용 예시임을 표시한다.
+실행 횟수/토큰 상한/질문·검토 라운드는 기존 중앙 가드로 제한한다. 토큰 상한은 다음 호출 경계에서
+검사하므로 현재 실행 중인 호출의 강제 비용 상한은 아니다.
 
-- A standalone Windows desktop shell that starts and stops the local server automatically
-- In-app fake/real adapter settings and native project/executable pickers
-- Project registration and selection
-- Chat-style request, Claude clarification, and user answer history
-- Plan approval/rejection with persisted execution limits and maximum remaining calls
-- Current state, implement/revise/review rounds, cancel, failure code, and next action
-- Task/project usage with actual/estimated/unavailable confidence and token-ceiling status
-- Token-free runtime status with paths, credentials, prompts, diffs, and session ids omitted
-- Responsive single-column fallback for narrow screens
+계획에 scope/outOfScope, 수용 조건, 파일 후보와 위험도를 포함하여 반복 탐색을 줄인다.
+동일 세션에는 답변·수정 사항만 전송한다. 리뷰에 전체 대화나 전체 저장소를 보내지 않는다.
+검증 강도는 변경 위험에 비례한다. low는 관련 테스트/정적 검사, medium은 관련 테스트/전체
+타입·lint 검사, high는 전체 테스트/build까지 권장한다. 이것은 에이전트 실행 계약이며 앱이 명령 성공을 추정하지 않는다.
 
-Flow verification takes priority over visual polish.
+프롬프트/diff는 DB·공개 이벤트에 보관하지 않고 원시 CLI 출력 대신 메타데이터를 저장한다.
+진단 내보내기는 허용된 고정 상태와 숫자만 조합해 사용자 이름/경로/세션/원문/비밀값을 제외한다.
+구조화된 계획/보고와 사용자 요청은 로컬 작업 기록이다. 외부 전송 기능은 없다.
 
-## Usage accounting
+## 범위 밖
 
-Per provider (claude / codex), per project / task / run / session: input, cached input, output, reasoning, total tokens, plus `source: actual | estimated | unavailable`. Unknown values are `null`, never `0`. Session ids remain server-side and are exposed publicly only as presence booleans.
-
-## Explicit non-goals (current phase)
-
-Unattended CLI execution (every real run is user-approved), sandbox bypass, auto commit/push, GitHub API, multi-user auth, cloud, Docker, plugin systems, other model providers, agent teams, parallel implementation, worktree automation, voice, mobile, cost conversion, quota lookup, auto-update, telemetry.
+클라우드/다중 사용자, 추가 AI 공급자, 자동 커밋·푸시, 자동 배포, 자동 권한 우회, 음성/모바일,
+에이전트 팀, 무인 실행, 요금 추정과 계정 잔여량 조회는 이번 제품 범위에 포함하지 않는다.

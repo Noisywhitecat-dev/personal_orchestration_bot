@@ -1,9 +1,37 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ProviderBudgetStatus, Task } from '../shared/contracts.js';
-import { nextAction, tokenRangeLabel } from './view-model.js';
+import {
+  nextAction,
+  tokenRangeLabel,
+  taskPresentation,
+  errorGuidance,
+  safeMessage,
+} from './view-model.js';
+import { TASK_STATES } from '../domain/task.js';
 
 describe('web view model', () => {
+  it('maps every state to a Korean stage and exactly one primary action', () => {
+    expect(taskPresentation(null).action).toBe('submit');
+    for (const state of TASK_STATES) {
+      const view = taskPresentation({
+        state,
+        failure: { code: 'INTERRUPTED', message: 'raw' },
+      } as Task);
+      expect(view.stage).toMatch(/[가-힣]/);
+      expect(view.button).toMatch(/[가-힣]/);
+      expect(['submit', 'answer', 'approve', 'new', 'wait']).toContain(view.action);
+      if (state === 'awaiting_approval') expect(view.action).toBe('approve');
+      if (state === 'failed') expect(view.next).toContain('추가 AI 호출');
+    }
+  });
+  it('gives actionable errors without exposing CLI text or internal state', () => {
+    expect(errorGuidance(new Error('INVALID_PROJECT_ROOT: SECRET'))).toContain('폴더');
+    expect(errorGuidance(new Error('fetch failed SECRET'))).toContain('새로 고침');
+    expect(errorGuidance(new Error('SECRET'))).not.toContain('SECRET');
+    expect(safeMessage('system', 'Task failed (SECRET): raw')).not.toContain('SECRET');
+    expect(safeMessage('user', 'my original draft')).toBe('my original draft');
+  });
   it('does not show uncertain token usage as a definite remainder', () => {
     const status = {
       tokenCeiling: 100,

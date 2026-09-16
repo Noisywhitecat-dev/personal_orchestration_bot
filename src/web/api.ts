@@ -1,4 +1,9 @@
 import type {
+  HarnessPreview,
+  HarnessInstallResult,
+  PreflightResult,
+} from '../shared/project-tools.js';
+import type {
   ApiError,
   Project,
   ProjectDetailResponse,
@@ -26,6 +31,10 @@ const post = <T>(path: string, body?: unknown): Promise<T> =>
   request<T>(path, { method: 'POST', body: body === undefined ? null : JSON.stringify(body) });
 
 export const api = {
+  harness: (id: string) => request<HarnessPreview>(`/api/projects/${id}/harness`),
+  installHarness: (id: string) =>
+    post<HarnessInstallResult>(`/api/projects/${id}/harness`, { confirm: true }),
+  preflight: (id: string) => post<PreflightResult>(`/api/projects/${id}/preflight`),
   listProjects: () => request<{ projects: Project[] }>('/api/projects').then((r) => r.projects),
   registerProject: (body: RegisterProjectBody) =>
     post<{ project: Project }>('/api/projects', body).then((r) => r.project),

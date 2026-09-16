@@ -38,6 +38,7 @@ describe('desktop settings', () => {
         codexEffort: 'medium',
       }),
     ).toEqual({
+      ...DEFAULT_DESKTOP_SETTINGS,
       claudeAdapter: 'cli',
       codexAdapter: 'cli',
       claudeExecutable: 'C:/tools/claude.exe',
