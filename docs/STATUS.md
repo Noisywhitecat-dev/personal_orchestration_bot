@@ -9,10 +9,22 @@ The local MVP now runs as a standalone Windows desktop application. Electron 44.
 per-user application-data directory, and closes the server with the app. The sandboxed renderer has
 no Node integration; a context-isolated preload provides only settings save/read and native
 project/executable pickers. Fake adapters remain the first-launch default, while the left-sidebar
-settings panel enables real Claude/Codex executables and restarts the app after saving.
+settings panel enables real Claude/Codex executables and applies changes after saving.
 The renderer's navigation, controls, task/run states, usage labels and timeline labels, together with
 the native Electron application menu, are displayed in Korean. Internal protocol identifiers remain
 unchanged for persistence and API compatibility.
+The settings panel also supports optional per-provider model and effort overrides. Saving now
+restarts the embedded server in process and reloads the same window instead of relying on
+`app.relaunch()`, which is unreliable from an extracted portable executable. A token-free desktop
+smoke test observed a new loopback port and the persisted settings after one save-button click.
+The model selector reads visible Codex models and exact effort levels from the installed CLI cache,
+with a bundled fallback, while Claude compatibility follows the documented Opus/Sonnet matrix.
+Effort choices are filtered per selected model and an incompatible persisted pair is normalized to
+the CLI default before it can reach either adapter. The UI shows the model default, a balanced
+development recommendation, and short low/medium/high guidance beside each selector.
+A token-free packaged-app smoke selected Sonnet and GPT-5.5: the former omitted `xhigh`, the latter
+omitted `max`, both recommendation notes rendered, and `high`/`xhigh` persisted through an in-place
+server restart respectively.
 
 `npm run desktop` was launched successfully in development. `npm run desktop:dist` produced and
 successfully launched `AI Orchestrator-0.1.0-x64.exe`; its window was responsive and its internal

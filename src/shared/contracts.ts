@@ -107,8 +107,20 @@ export interface TaskDetailResponse {
 }
 
 export interface RuntimeStatusResponse {
-  claude: { adapter: 'fake' | 'cli'; executable: ExecutableStatus; timeoutMs: number };
-  codex: { adapter: 'fake' | 'cli'; executable: ExecutableStatus; timeoutMs: number };
+  claude: {
+    adapter: 'fake' | 'cli';
+    executable: ExecutableStatus;
+    timeoutMs: number;
+    model: string | null;
+    effort: string | null;
+  };
+  codex: {
+    adapter: 'fake' | 'cli';
+    executable: ExecutableStatus;
+    timeoutMs: number;
+    model: string | null;
+    effort: string | null;
+  };
   reviewDiffMaxBytes: number;
   database: string;
   defaultExecutionLimits: ExecutionLimitsInput;

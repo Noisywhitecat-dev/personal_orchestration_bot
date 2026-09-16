@@ -30,4 +30,31 @@ describe('application server bootstrap', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it('reports configured CLI models and effort without invoking either provider', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'orchestration-bootstrap-models-'));
+    const runtime = await startApplicationServer({
+      host: '127.0.0.1',
+      port: 0,
+      databasePath: join(directory, 'test.sqlite'),
+      env: {
+        CLAUDE_ADAPTER: 'cli',
+        CLAUDE_MODEL: 'sonnet',
+        CLAUDE_EFFORT: 'high',
+        CODEX_ADAPTER: 'cli',
+        CODEX_MODEL: 'gpt-5.6-sol',
+        CODEX_REASONING_EFFORT: 'medium',
+      },
+      log: () => undefined,
+    });
+    try {
+      const response = await fetch(`${runtime.url}/api/runtime-status`);
+      const status = (await response.json()) as RuntimeStatusResponse;
+      expect(status.claude).toMatchObject({ model: 'sonnet', effort: 'high' });
+      expect(status.codex).toMatchObject({ model: 'gpt-5.6-sol', effort: 'medium' });
+    } finally {
+      await runtime.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

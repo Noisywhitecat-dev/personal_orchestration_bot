@@ -46,6 +46,18 @@ describe('buildStartArgs', () => {
     );
     expect(buildStartArgs({ projectRoot: ROOT })).not.toContain('--skip-git-repo-check');
   });
+
+  it('adds an explicit model and reasoning effort only when configured', () => {
+    const args = buildStartArgs({
+      projectRoot: ROOT,
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'medium',
+    });
+    expect(args).toContain('--model');
+    expect(args).toContain('gpt-5.6-sol');
+    expect(args).toContain('model_reasoning_effort="medium"');
+    expect(buildStartArgs({ projectRoot: ROOT }).join(' ')).not.toContain('model_reasoning_effort');
+  });
 });
 
 describe('buildResumeArgs', () => {
@@ -68,6 +80,16 @@ describe('buildResumeArgs', () => {
     expect(() => buildResumeArgs({ sessionId: '--last' })).toThrow(OrchestrationError);
     expect(() => buildResumeArgs({ sessionId: 'a b' })).toThrow(OrchestrationError);
     expect(() => buildResumeArgs({ sessionId: '' })).toThrow(OrchestrationError);
+  });
+
+  it('keeps model and effort overrides when resuming the exact session', () => {
+    const args = buildResumeArgs({
+      sessionId: 'thread-abc-123',
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'high',
+    });
+    expect(args).toContain('gpt-5.6-sol');
+    expect(args).toContain('model_reasoning_effort="high"');
   });
 });
 

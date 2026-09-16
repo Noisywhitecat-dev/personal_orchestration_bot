@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron') as typeof import('ele
 
 contextBridge.exposeInMainWorld('orchestrationDesktop', {
   getSettings: () => ipcRenderer.invoke('desktop:get-settings'),
+  getModelCatalog: () => ipcRenderer.invoke('desktop:get-model-catalog'),
   saveSettings: (settings: unknown) => ipcRenderer.invoke('desktop:save-settings', settings),
   chooseExecutable: (provider: 'claude' | 'codex') =>
     ipcRenderer.invoke('desktop:choose-executable', provider),

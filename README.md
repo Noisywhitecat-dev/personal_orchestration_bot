@@ -27,7 +27,9 @@ npm run desktop:dist
 
 Run `app-release/AI Orchestrator-0.1.0-x64.exe`. The first launch uses safe fake adapters. Open **앱
 설정** inside the left sidebar to select real Claude Code / Codex executables; saving restarts the
-app automatically. Use **폴더 선택** to register a project without typing its path. Desktop data is
+embedded server and reconnects the same app window automatically. Optional model and effort fields
+override each CLI only when filled; the model selector shows only compatible effort levels and blank
+fields preserve that CLI's defaults. Use **폴더 선택** to register a project without typing its path. Desktop data is
 kept in the operating system's per-user application-data directory, not beside the executable.
 
 For a developer launch without packaging:
@@ -54,9 +56,11 @@ Both AI adapters default to **fake** so the whole flow runs without any CLI. Rea
 | ------------------------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CLAUDE_ADAPTER`                                                    | `fake` (default) / `cli` | `cli` runs the local Claude Code CLI using your existing login. Planning and review always run with `--permission-mode plan` (read-only); the prompt is passed on stdin.                                                          |
 | `CLAUDE_EXECUTABLE`                                                 | path or name             | default `claude`. The desktop app is an MSIX package: from an ordinary shell use `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude-code\<version>\claude.exe`. Log in once with `claude auth login`. |
+| `CLAUDE_MODEL`, `CLAUDE_EFFORT`                                     | optional                 | Explicit model and effort override. Leave unset to use Claude Code defaults.                                                                                                                                                      |
 | `CLAUDE_TIMEOUT_MS`                                                 | positive integer         | default 600000                                                                                                                                                                                                                    |
 | `CLAUDE_MAX_TURNS`                                                  | positive integer         | passed as `--max-turns` only when set (not listed by `claude 2.1.260 --help`)                                                                                                                                                     |
 | `CODEX_ADAPTER`                                                     | `fake` (default) / `cli` | `cli` runs `codex exec` with `--sandbox workspace-write`                                                                                                                                                                          |
+| `CODEX_MODEL`, `CODEX_REASONING_EFFORT`                             | optional                 | Explicit model and reasoning-effort override. Leave unset to use the Codex CLI configuration.                                                                                                                                     |
 | `CODEX_EXECUTABLE`, `CODEX_TIMEOUT_MS`, `CODEX_SKIP_GIT_REPO_CHECK` |                          | see `.env.example`                                                                                                                                                                                                                |
 
 Task defaults are controlled by `MAX_CLAUDE_RUNS`, `MAX_CODEX_RUNS`, `MAX_CLARIFICATION_ROUNDS`, `MAX_REVIEW_ROUNDS`, and optional `CLAUDE_TOKEN_CEILING` / `CODEX_TOKEN_CEILING`. A token ceiling is checked before each run; it is a **run-boundary ceiling**, not a provider-side hard cap, so one call can cross it.

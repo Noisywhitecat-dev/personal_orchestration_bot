@@ -32,12 +32,20 @@ describe('desktop settings', () => {
         codexAdapter: 'cli',
         claudeExecutable: ' C:/tools/claude.exe ',
         codexExecutable: 'codex',
+        claudeModel: ' sonnet ',
+        claudeEffort: 'high',
+        codexModel: ' gpt-5.6-sol ',
+        codexEffort: 'medium',
       }),
     ).toEqual({
       claudeAdapter: 'cli',
       codexAdapter: 'cli',
       claudeExecutable: 'C:/tools/claude.exe',
       codexExecutable: 'codex',
+      claudeModel: 'sonnet',
+      claudeEffort: 'high',
+      codexModel: 'gpt-5.6-sol',
+      codexEffort: 'medium',
     });
   });
 
@@ -63,11 +71,48 @@ describe('desktop settings', () => {
         codexAdapter: 'fake',
         claudeExecutable: 'C:/claude.exe',
         codexExecutable: 'codex',
+        claudeModel: 'opus',
+        claudeEffort: 'medium',
+        codexModel: 'gpt-5.6-sol',
+        codexEffort: 'high',
       });
       expect(loadDesktopSettings(path)).toEqual(saved);
       expect(readFileSync(path, 'utf8')).not.toContain('token');
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('passes explicitly selected model and effort values without mutating the base environment', () => {
+    const settings = parseDesktopSettings({
+      ...DEFAULT_DESKTOP_SETTINGS,
+      claudeModel: 'sonnet',
+      claudeEffort: 'high',
+      codexModel: 'gpt-5.6-sol',
+      codexEffort: 'medium',
+    });
+    expect(desktopEnvironment(settings, {})).toMatchObject({
+      CLAUDE_MODEL: 'sonnet',
+      CLAUDE_EFFORT: 'high',
+      CODEX_MODEL: 'gpt-5.6-sol',
+      CODEX_REASONING_EFFORT: 'medium',
+    });
+  });
+
+  it('removes unknown models and model-incompatible effort values', () => {
+    expect(
+      parseDesktopSettings({
+        ...DEFAULT_DESKTOP_SETTINGS,
+        claudeModel: 'unknown-claude',
+        claudeEffort: 'high',
+        codexModel: 'gpt-5.5',
+        codexEffort: 'max',
+      }),
+    ).toMatchObject({
+      claudeModel: '',
+      claudeEffort: '',
+      codexModel: 'gpt-5.5',
+      codexEffort: '',
+    });
   });
 });

@@ -22,6 +22,8 @@ import { CodexJsonlParser } from './codex-jsonl-parser.js';
  */
 
 export const SANDBOX_MODE = 'workspace-write';
+export type CodexReasoningEffort =
+  'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 
 export const REQUIRED_WINDOWS_CODEX_RUNTIME_FILES = [
   'codex.exe',
@@ -111,11 +113,29 @@ export function assertNoForbiddenArgs(args: readonly string[]): void {
 export interface StartArgsOptions {
   projectRoot: string;
   skipGitRepoCheck?: boolean;
+  model?: string;
+  reasoningEffort?: CodexReasoningEffort;
+}
+
+function addModelArgs(
+  args: string[],
+  opts: { model?: string; reasoningEffort?: CodexReasoningEffort },
+): void {
+  if (opts.model !== undefined) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(opts.model)) {
+      throw new OrchestrationError('VALIDATION_FAILED', 'model has an invalid format.');
+    }
+    args.push('--model', opts.model);
+  }
+  if (opts.reasoningEffort !== undefined) {
+    args.push('-c', `model_reasoning_effort="${opts.reasoningEffort}"`);
+  }
 }
 
 /** Pure. argv for a new session (after the executable). */
 export function buildStartArgs(opts: StartArgsOptions): string[] {
   const args = ['exec', '--json', '--sandbox', SANDBOX_MODE, '-C', opts.projectRoot];
+  addModelArgs(args, opts);
   if (opts.skipGitRepoCheck) args.push('--skip-git-repo-check');
   args.push('-');
   assertNoForbiddenArgs(args);
@@ -125,6 +145,8 @@ export function buildStartArgs(opts: StartArgsOptions): string[] {
 export interface ResumeArgsOptions {
   sessionId: string;
   skipGitRepoCheck?: boolean;
+  model?: string;
+  reasoningEffort?: CodexReasoningEffort;
 }
 
 /** Pure. argv for resuming (after the executable). No --sandbox/-C on this CLI version. */
@@ -133,6 +155,7 @@ export function buildResumeArgs(opts: ResumeArgsOptions): string[] {
     throw new OrchestrationError('VALIDATION_FAILED', 'Session id contains unexpected characters.');
   }
   const args = ['exec', 'resume', '--json', '-c', `sandbox_mode="${SANDBOX_MODE}"`];
+  addModelArgs(args, opts);
   if (opts.skipGitRepoCheck) args.push('--skip-git-repo-check');
   args.push(opts.sessionId, '-');
   assertNoForbiddenArgs(args);
@@ -153,6 +176,8 @@ export interface CodexCliAdapterOptions {
   killGraceMs?: number;
   /** When Codex reports no file changes, run `git status --porcelain` to fill changedFiles. Default true. */
   gitStatusFallback?: boolean;
+  model?: string;
+  reasoningEffort?: CodexReasoningEffort;
 }
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -168,6 +193,8 @@ export class CodexCliAdapter implements AgentAdapter {
   private readonly log: ((line: string) => void) | undefined;
   private readonly killGraceMs: number | undefined;
   private readonly gitStatusFallback: boolean;
+  private readonly model: string | undefined;
+  private readonly reasoningEffort: CodexReasoningEffort | undefined;
   private readonly controllers = new Map<RunId, AbortController>();
 
   constructor(opts: CodexCliAdapterOptions) {
@@ -181,18 +208,27 @@ export class CodexCliAdapter implements AgentAdapter {
     this.log = opts.log;
     this.killGraceMs = opts.killGraceMs;
     this.gitStatusFallback = opts.gitStatusFallback ?? true;
+    this.model = opts.model;
+    this.reasoningEffort = opts.reasoningEffort;
   }
 
   start(input: AgentRunInput): AsyncIterable<AgentEvent> {
     const args = buildStartArgs({
       projectRoot: input.projectRoot,
       skipGitRepoCheck: this.skipGitRepoCheck,
+      ...(this.model !== undefined ? { model: this.model } : {}),
+      ...(this.reasoningEffort !== undefined ? { reasoningEffort: this.reasoningEffort } : {}),
     });
     return this.run(args, input, null);
   }
 
   resume(sessionId: SessionId, input: AgentRunInput): AsyncIterable<AgentEvent> {
-    const args = buildResumeArgs({ sessionId, skipGitRepoCheck: this.skipGitRepoCheck });
+    const args = buildResumeArgs({
+      sessionId,
+      skipGitRepoCheck: this.skipGitRepoCheck,
+      ...(this.model !== undefined ? { model: this.model } : {}),
+      ...(this.reasoningEffort !== undefined ? { reasoningEffort: this.reasoningEffort } : {}),
+    });
     return this.run(args, input, sessionId);
   }
 

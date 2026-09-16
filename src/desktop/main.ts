@@ -12,6 +12,8 @@ import {
 } from 'electron';
 
 import { startApplicationServer, type RunningApplicationServer } from '../server/bootstrap.js';
+import type { ModelCatalog } from '../shared/model-catalog.js';
+import { loadDesktopModelCatalog } from './model-catalog.js';
 import {
   DEFAULT_DESKTOP_SETTINGS,
   desktopEnvironment,
@@ -27,6 +29,9 @@ let mainWindow: BrowserWindow | null = null;
 let currentSettings: DesktopSettings;
 let settingsPath: string;
 let quitting = false;
+let applyingSettings = false;
+let allowedOrigin: string | null = null;
+let modelCatalog: ModelCatalog;
 
 function appRoot(): string {
   return app.getAppPath();
@@ -38,16 +43,48 @@ async function closeRuntime(): Promise<void> {
   if (active) await active.close();
 }
 
-async function restartApplication(): Promise<void> {
-  if (quitting) return;
-  quitting = true;
-  await closeRuntime();
-  app.relaunch();
-  app.exit(0);
+async function applySavedSettings(previousSettings: DesktopSettings): Promise<void> {
+  if (quitting || applyingSettings) return;
+  applyingSettings = true;
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      allowedOrigin = 'null';
+      const applyingPage = encodeURIComponent(
+        '<!doctype html><html lang="ko"><meta charset="utf-8"><title>설정 적용 중</title><body style="background:#10131a;color:#eef2ff;font-family:sans-serif;padding:32px"><h2>설정을 적용하고 있습니다…</h2><p>잠시만 기다려 주세요.</p></body></html>',
+      );
+      await mainWindow.loadURL(`data:text/html;charset=utf-8,${applyingPage}`);
+    }
+    await closeRuntime();
+    try {
+      runtime = await startEmbeddedServer(currentSettings);
+    } catch (error) {
+      currentSettings = saveDesktopSettings(settingsPath, previousSettings, modelCatalog);
+      await dialog.showMessageBox({
+        type: 'warning',
+        title: '설정을 적용할 수 없습니다',
+        message: '새 설정으로 서버를 시작하지 못해 이전 설정으로 되돌렸습니다.',
+        detail: error instanceof Error ? error.message : String(error),
+        buttons: ['확인'],
+        noLink: true,
+      });
+      runtime = await startEmbeddedServer(currentSettings);
+    }
+
+    allowedOrigin = new URL(runtime.url).origin;
+    if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.loadURL(runtime.url);
+  } catch (error) {
+    dialog.showErrorBox(
+      '설정 적용 실패',
+      `${error instanceof Error ? error.message : String(error)}\n\n앱을 수동으로 다시 시작해 주세요.`,
+    );
+  } finally {
+    applyingSettings = false;
+  }
 }
 
 function registerIpc(): void {
   ipcMain.handle('desktop:get-settings', () => currentSettings);
+  ipcMain.handle('desktop:get-model-catalog', () => modelCatalog);
   ipcMain.handle('desktop:get-app-info', () => ({
     version: app.getVersion(),
     packaged: app.isPackaged,
@@ -69,8 +106,9 @@ function registerIpc(): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
   ipcMain.handle('desktop:save-settings', (_event, value: unknown) => {
-    currentSettings = saveDesktopSettings(settingsPath, value);
-    setTimeout(() => void restartApplication(), 150);
+    const previousSettings = currentSettings;
+    currentSettings = saveDesktopSettings(settingsPath, value, modelCatalog);
+    setTimeout(() => void applySavedSettings(previousSettings), 300);
     return currentSettings;
   });
 }
@@ -143,15 +181,19 @@ async function createMainWindow(): Promise<void> {
       noLink: true,
     });
     if (result.response !== 0) throw error;
-    currentSettings = saveDesktopSettings(settingsPath, {
-      ...currentSettings,
-      claudeAdapter: DEFAULT_DESKTOP_SETTINGS.claudeAdapter,
-      codexAdapter: DEFAULT_DESKTOP_SETTINGS.codexAdapter,
-    });
+    currentSettings = saveDesktopSettings(
+      settingsPath,
+      {
+        ...currentSettings,
+        claudeAdapter: DEFAULT_DESKTOP_SETTINGS.claudeAdapter,
+        codexAdapter: DEFAULT_DESKTOP_SETTINGS.codexAdapter,
+      },
+      modelCatalog,
+    );
     runtime = await startEmbeddedServer(currentSettings);
   }
 
-  const allowedOrigin = new URL(runtime.url).origin;
+  allowedOrigin = new URL(runtime.url).origin;
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -177,7 +219,7 @@ async function createMainWindow(): Promise<void> {
     return { action: 'deny' };
   });
   window.webContents.on('will-navigate', (event, url) => {
-    if (new URL(url).origin !== allowedOrigin) event.preventDefault();
+    if (allowedOrigin === null || new URL(url).origin !== allowedOrigin) event.preventDefault();
   });
   await window.loadURL(runtime.url);
 }
@@ -213,7 +255,8 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     console.log('[desktop] ready');
     settingsPath = join(app.getPath('userData'), 'settings.json');
-    currentSettings = loadDesktopSettings(settingsPath);
+    modelCatalog = loadDesktopModelCatalog();
+    currentSettings = loadDesktopSettings(settingsPath, modelCatalog);
     registerIpc();
     installKoreanMenu();
 

@@ -33,8 +33,20 @@ export function createApp(opts: AppOptions): Server {
   const runtimeStatus =
     opts.runtimeStatus ??
     ({
-      claude: { adapter: 'fake', executable: 'not_required', timeoutMs: 600_000 },
-      codex: { adapter: 'fake', executable: 'not_required', timeoutMs: 900_000 },
+      claude: {
+        adapter: 'fake',
+        executable: 'not_required',
+        timeoutMs: 600_000,
+        model: null,
+        effort: null,
+      },
+      codex: {
+        adapter: 'fake',
+        executable: 'not_required',
+        timeoutMs: 900_000,
+        model: null,
+        effort: null,
+      },
       reviewDiffMaxBytes: 65_536,
       database: 'memory',
       defaultExecutionLimits: {
