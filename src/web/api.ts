@@ -31,6 +31,7 @@ const post = <T>(path: string, body?: unknown): Promise<T> =>
   request<T>(path, { method: 'POST', body: body === undefined ? null : JSON.stringify(body) });
 
 export const api = {
+  deleteTask: (id: string) => post<{ deleted: true }>(`/api/tasks/${id}/delete`, { confirm: true }),
   harness: (id: string) => request<HarnessPreview>(`/api/projects/${id}/harness`),
   installHarness: (id: string) =>
     post<HarnessInstallResult>(`/api/projects/${id}/harness`, { confirm: true }),

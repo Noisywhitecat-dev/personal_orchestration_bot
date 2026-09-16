@@ -223,3 +223,12 @@ usedPercent, nullable resetsAt (Unix seconds), observedAt (milliseconds), and so
 Claude execution events and explicitly imported statusline JSON are projected into the same whitelist.
 Raw input and account credentials are not stored. Import is capped at 64KB. Unsupported/missing values stay absent;
 expired windows do not display current remaining capacity. These snapshots are not task token consumption.
+
+## M19 대화 삭제
+
+`POST /api/tasks/:id/delete`에 `{ "confirm": true }`를 보낸다. 기존 POST의 same-origin 검사를 적용한다.
+완료·실패·중단 상태이며 실행 파이프라인이 완전히 종료된 경우만 허용한다. 실행/승인 대기는 409,
+확인 누락/false는 400, 없는 작업은 404다. 성공은 200 `{ "deleted": true }`.
+작업·메시지·실행·타임라인·로컬 usage를 한 트랜잭션으로 삭제한다. 프로젝트와 파일은 건드리지 않는다.
+성공 후 SSE `task_deleted`에 taskId/projectId를 보낸다. 클라이언트는 프로젝트를 다시 읽고
+선택된 작업이 없으면 최근 남은 작업 또는 새 작업 화면으로 이동한다. 외부 CLI 세션 이력은 삭제하지 않는다.

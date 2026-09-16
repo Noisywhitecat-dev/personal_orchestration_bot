@@ -16,15 +16,27 @@ import { LimitSettings } from '../components/LimitSettings.js';
 export function App() {
   const workspace = useWorkspace();
   const { projects, projectId, taskId, project, detail, runtime, busy, error } = workspace;
-  const [draft, setDraft] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const draftKey = `${projectId ?? ''}:${taskId ?? 'new'}`;
+  const draft = drafts[draftKey] ?? '';
+  const setDraft = (text: string) => setDrafts((current) => ({ ...current, [draftKey]: text }));
+  const sending = useRef(false);
   const [limits, setLimits] = useState<ExecutionLimitsInput>(presetLimits('auto'));
   const [settings, setSettings] = useState(false);
+  const [settingsOpened, setSettingsOpened] = useState(false);
+  const openSettings = () => {
+    setSettingsOpened(true);
+    setSettings(true);
+  };
   const [guide, setGuide] = useState(false);
   const [sidebar, setSidebar] = useState(false);
   const [tools, setTools] = useState(false);
   const settingsDialog = useRef<HTMLDialogElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
-  const messagesEnd = useRef<HTMLDivElement>(null);
+  const nearBottom = useRef(true);
+  const [showLatest, setShowLatest] = useState(false);
+  const previousTask = useRef<string | null>(null);
+  const conversationScroll = useRef<HTMLDivElement>(null);
   const task = detail?.task ?? null;
   const presentation = taskPresentation(task);
   const fake = runtime?.claude.adapter === 'fake' && runtime.codex.adapter === 'fake';
@@ -45,32 +57,47 @@ export function App() {
     else settingsDialog.current?.close();
   }, [settings]);
   useEffect(() => {
-    messagesEnd.current?.scrollIntoView({ block: 'nearest' });
-  }, [messages.length, task?.state]);
-  useEffect(() => {
-    setDraft('');
-  }, [taskId, projectId]);
+    if (nearBottom.current || previousTask.current !== taskId) {
+      const scroller = conversationScroll.current;
+      scroller?.scrollTo({ top: scroller.scrollHeight });
+      nearBottom.current = true;
+      setShowLatest(false);
+    } else setShowLatest(true);
+    previousTask.current = taskId;
+  }, [messages.length, task?.state, taskId]);
   const newTask = () => {
     workspace.newTask();
-    setDraft('');
     setSidebar(false);
-    setTimeout(() => composer.current?.focus(), 0);
+    setTimeout(() => composer.current?.focus({ preventScroll: true }), 0);
   };
   const primaryAction = async () => {
-    if (presentation.action === 'new') {
-      newTask();
+    if (
+      busy ||
+      sending.current ||
+      !projectId ||
+      (taskId && !detail) ||
+      presentation.action === 'wait'
+    )
       return;
+    sending.current = true;
+    try {
+      if (presentation.action === 'new') {
+        newTask();
+        return;
+      }
+      if (presentation.action === 'approve') {
+        await workspace.taskAction('approve');
+        return;
+      }
+      if (!draft.trim()) return;
+      const ok =
+        presentation.action === 'answer'
+          ? await workspace.taskAction('clarify', draft.trim())
+          : await workspace.submit(draft.trim(), limits);
+      if (ok) setDraft('');
+    } finally {
+      sending.current = false;
     }
-    if (presentation.action === 'approve') {
-      await workspace.taskAction('approve');
-      return;
-    }
-    if (!draft.trim()) return;
-    const ok =
-      presentation.action === 'answer'
-        ? await workspace.taskAction('clarify', draft.trim())
-        : await workspace.submit(draft.trim(), limits);
-    if (ok) setDraft('');
   };
   const waiting = presentation.action === 'wait';
   const composing = presentation.action === 'submit' || presentation.action === 'answer';
@@ -83,6 +110,17 @@ export function App() {
         projectId={projectId}
         taskId={taskId}
         busy={busy}
+        runtime={runtime}
+        onDelete={async (id) => {
+          const ok = await workspace.deleteTask(id);
+          if (ok)
+            setDrafts((current) =>
+              Object.fromEntries(
+                Object.entries(current).filter(([key]) => !key.endsWith(':' + id)),
+              ),
+            );
+          return ok;
+        }}
         onProject={(id) => {
           workspace.selectProject(id);
           setSidebar(false);
@@ -93,7 +131,7 @@ export function App() {
         }}
         onNew={newTask}
         onRegister={workspace.register}
-        onSettings={() => setSettings(true)}
+        onSettings={openSettings}
         onGuide={() => setGuide(true)}
       />
       <main className="conversation" aria-label="작업 대화">
@@ -129,14 +167,27 @@ export function App() {
             </button>
           </div>
         )}
-        <div className="conversation-scroll">
+        <div
+          ref={conversationScroll}
+          className="conversation-scroll"
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            if (nearBottom.current) setShowLatest(false);
+          }}
+        >
           {guide && (
             <Onboarding
-              onSettings={() => setSettings(true)}
+              onSettings={openSettings}
               onClose={async () => {
                 if (desktopBridge) {
-                  const s = await desktopBridge.getSettings();
-                  await desktopBridge.saveSettings({ ...s, onboardingCompleted: true });
+                  try {
+                    await desktopBridge.completeOnboarding();
+                  } catch {
+                    workspace.setError(
+                      '시작 안내 상태를 저장하지 못했습니다. 다음 실행 때 다시 표시될 수 있습니다.',
+                    );
+                  }
                 } else localStorage.setItem('orchestrator-guide-v1', 'done');
                 setGuide(false);
               }}
@@ -186,7 +237,7 @@ export function App() {
               <PlanCard plan={task.plan} />
             ) : (
               <details className="approved-plan">
-                <summary>승인한 계획 보기</summary>
+                <summary>작업 계획 보기</summary>
                 <PlanCard plan={task.plan} />
               </details>
             ))}
@@ -206,9 +257,21 @@ export function App() {
               )}
             </div>
           )}
-          <div ref={messagesEnd} />
         </div>
         <footer className="composer-area">
+          {showLatest && (
+            <button
+              className="secondary"
+              onClick={() => {
+                const scroller = conversationScroll.current;
+                scroller?.scrollTo({ top: scroller.scrollHeight });
+                nearBottom.current = true;
+                setShowLatest(false);
+              }}
+            >
+              최신 내용으로 이동
+            </button>
+          )}
           {task?.state === 'awaiting_clarification' && (
             <p className="composer-label">Claude의 질문에 답해주세요</p>
           )}
@@ -222,16 +285,24 @@ export function App() {
                   : '먼저 프로젝트를 등록하거나 선택하세요'
               }
               rows={3}
+              maxLength={20000}
+              aria-describedby="request-length"
               value={draft}
               disabled={!projectId || busy || loadingTask}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   void primaryAction();
                 }
               }}
             />
+          )}
+          {composing && (
+            <small id="request-length" className="muted">
+              {draft.length.toLocaleString()} / 20,000자 · 작성 중인 내용은 앱을 닫기 전까지
+              유지됩니다.
+            </small>
           )}
           <div className="composer-actions">
             <span className="muted">
@@ -286,7 +357,7 @@ export function App() {
         >
           닫기
         </button>
-        {settings && <DesktopSettingsPanel />}
+        {settingsOpened && <DesktopSettingsPanel />}
       </dialog>
     </div>
   );

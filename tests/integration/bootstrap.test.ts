@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -8,6 +8,32 @@ import { startApplicationServer } from '../../src/server/bootstrap.js';
 import type { RuntimeStatusResponse } from '../../src/shared/contracts.js';
 
 describe('application server bootstrap', () => {
+  it('serves UI and assets from a relative static path, including Windows separators', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'orchestration-static-'));
+    const web = join(directory, 'web');
+    mkdirSync(web);
+    writeFileSync(join(web, 'index.html'), '<main>static UI</main>');
+    writeFileSync(join(web, 'app.js'), '/* test asset */');
+    const runtime = await startApplicationServer({
+      port: 0,
+      databasePath: join(directory, 'test.sqlite'),
+      staticDir: relative(process.cwd(), web).replaceAll('\\', '/'),
+      env: {},
+      log: () => {},
+    });
+    try {
+      const page = await fetch(runtime.url + '/');
+      expect(page.status).toBe(200);
+      expect(await page.text()).toContain('static UI');
+      const asset = await fetch(runtime.url + '/app.js');
+      expect(asset.status).toBe(200);
+      expect(asset.headers.get('content-type')).toContain('javascript');
+      expect(await asset.text()).toContain('test asset');
+    } finally {
+      await runtime.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it('uses a free loopback port and closes cleanly', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'orchestration-bootstrap-'));
     const runtime = await startApplicationServer({

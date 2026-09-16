@@ -141,6 +141,18 @@ export class Orchestrator {
     return task;
   }
 
+  deleteTaskHistory(taskId: TaskId): void {
+    const task = this.getTask(taskId);
+    if (!isTerminal(task.state) || this.pipelines.has(taskId)) {
+      throw new OrchestrationError(
+        'INVALID_TRANSITION',
+        '먼저 작업을 중단하고 처리가 끝난 뒤 대화를 삭제하세요.',
+      );
+    }
+    this.repos.deleteTaskHistory(taskId);
+    this.bus.publish({ type: 'task_deleted', taskId, projectId: task.projectId });
+  }
+
   listTasks(projectId: ProjectId): Task[] {
     return this.repos.tasks.listByProject(projectId);
   }

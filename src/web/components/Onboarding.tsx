@@ -77,6 +77,21 @@ export function Onboarding({
             안내 완료
           </button>
         )}
+        {step < steps.length - 1 && (
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void onClose().catch(() => {
+                setError('안내 설정을 저장하지 못했습니다. 다시 시도하세요.');
+                setBusy(false);
+              });
+            }}
+          >
+            안내 닫기
+          </button>
+        )}
         <button className="text-button" onClick={onSettings}>
           앱 설정 열기
         </button>

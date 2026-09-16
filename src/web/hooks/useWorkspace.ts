@@ -121,6 +121,11 @@ export function useWorkspace() {
     register,
     submit,
     taskAction,
+    deleteTask: (id: string) =>
+      act(async () => {
+        await api.deleteTask(id);
+        await reload();
+      }),
     act,
     reload,
   };

@@ -18,6 +18,25 @@ function deferred<T>() {
 }
 
 describe('project and task history selection', () => {
+  it('recovers selection when the current conversation is deleted, including the last task', async () => {
+    let ids = ['a1', 'a2'];
+    const store = new WorkspaceSelection({
+      projectDetail: async (id) => project(id, ids),
+      taskDetail: async (id) => {
+        expect(ids).toContain(id);
+        return detail(id);
+      },
+    });
+    await store.openProject('a');
+    ids = ['a1'];
+    await store.refresh();
+    expect(store.getSnapshot().taskId).toBe('a1');
+    ids = [];
+    await store.refresh();
+    expect(store.getSnapshot()).toMatchObject({ taskId: null, detail: null });
+    await store.openProject('a');
+    expect(store.getSnapshot().taskId).toBeNull();
+  });
   it('ignores an old project failure after a successful switch', async () => {
     let reject!: (error: Error) => void;
     const old = new Promise<ProjectDetailResponse>((_resolve, fail) => {

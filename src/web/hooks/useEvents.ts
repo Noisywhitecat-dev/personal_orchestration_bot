@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import type { SseEvent } from '../../shared/contracts.js';
 
 const EVENT_TYPES: SseEvent['type'][] = [
+  'task_deleted',
   'task_updated',
   'run_updated',
   'message_added',

@@ -158,6 +158,10 @@ export async function handleApi(req: ApiRequest): Promise<ApiResult> {
     }
     if (seg.length === 4 && method === 'POST') {
       switch (seg[3]) {
+        case 'delete':
+          parse(z.object({ confirm: z.literal(true) }).strict(), body);
+          orchestrator.deleteTaskHistory(id);
+          return { status: 200, body: { deleted: true } };
         case 'approve':
           return { status: 200, body: { task: toPublicTask(orchestrator.approve(id)) } };
         case 'clarify': {

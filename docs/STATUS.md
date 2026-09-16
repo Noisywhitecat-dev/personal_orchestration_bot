@@ -1,6 +1,21 @@
 # STATUS
 
-Last updated: 2026-09-16 (M18 history/settings/account usage)
+Last updated: 2026-09-16 (M19 history deletion/sidebar UX)
+
+## M19 current checkpoint
+
+- 종료된 대화의 확인 후 원자적 삭제, 관련 기록/로컬 usage 제거, 다른 작업 보존과 SSE 선택 복구 구현.
+- 사이드바 계정 사용량과 모델·노력치, 작업 검색/날짜/프로젝트 경로 표시.
+- 프로젝트별 초안 및 설정 편집 유지, 중복/IME 전송 보호, 글자 수 표시, 읽는 위치 보존.
+- 안내 완료는 서버 재시작 없이 저장하며 첫 단계 닫기 지원. 저장 상태와 계획 라벨 수정.
+- 33개 파일 292개 테스트, typecheck/lint/format:check/build, diff 검사 통과. 새 의존성 없음.
+- desktop:dist 패키징 결과는 app-release/AI Orchestrator-0.1.0-x64.exe.
+- 실제 AI 생성 호출 0회. 운영 DB, 외부 프로젝트, 전역 설정 변경 없음.
+- **후속 화면 검증 완료**: 승인된 테스트 대화 2건 삭제, 초안/설정 보존, 실제 Ctrl+Enter 및 IME 합성 이벤트,
+  긴 대화 스크롤, 1440×900/520×520/520×760, 최종 콘솔 오류 0건을 확인했다.
+- 삭제창 포커스/Tab 순환, 대화 컨테이너 스크롤, Windows 상대 정적 경로를 추가 수정했다.
+- 설정/계정 bridge는 테스트 대역, Electron 재시작은 lifecycle 자동 테스트다. 실제 OS IME 전환은 미실행.
+- 상세 근거와 범위: [사용성 점검](UX_AUDIT.md). 기존 Draft PR의 미완료 표시를 갱신한다.
 
 ## M18 current checkpoint
 

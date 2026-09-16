@@ -103,6 +103,14 @@ function registerIpc(): void {
     trusted(event);
     return accountUsage.importStatus(text);
   });
+  ipcMain.handle('desktop:complete-onboarding', (event) => {
+    trusted(event);
+    currentSettings = saveDesktopSettings(
+      settingsPath,
+      { ...currentSettings, onboardingCompleted: true },
+      modelCatalog,
+    );
+  });
   ipcMain.handle('desktop:get-settings', () => currentSettings);
   ipcMain.handle('desktop:get-model-catalog', () => modelCatalog);
   ipcMain.handle('desktop:get-app-info', () => ({

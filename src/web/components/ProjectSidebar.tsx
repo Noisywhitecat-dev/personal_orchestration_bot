@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Project, Task } from '../../shared/contracts.js';
 import { desktopBridge } from '../desktop-bridge.js';
+import { DeleteTaskDialog } from './DeleteTaskDialog.js';
+import { SidebarSettings } from './SidebarSettings.js';
+import type { RuntimeStatusResponse } from '../../shared/contracts.js';
 import { taskStateLabel } from '../i18n.js';
 
 export function ProjectSidebar({
@@ -15,6 +18,8 @@ export function ProjectSidebar({
   onRegister,
   onSettings,
   onGuide,
+  onDelete,
+  runtime,
 }: {
   projects: Project[];
   tasks: Task[];
@@ -27,7 +32,17 @@ export function ProjectSidebar({
   onRegister: (name: string, root: string) => Promise<boolean>;
   onSettings: () => void;
   onGuide: () => void;
+  onDelete: (id: string) => Promise<boolean>;
+  runtime: RuntimeStatusResponse | null;
 }) {
+  const [query, setQuery] = useState('');
+  useEffect(() => setQuery(''), [projectId]);
+  const [deleting, setDeleting] = useState<Task | null>(null);
+  const filtered = [...tasks]
+    .reverse()
+    .filter((t) =>
+      `${t.plan?.title ?? ''} ${t.request}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+    );
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [root, setRoot] = useState('');
@@ -56,7 +71,8 @@ export function ProjectSidebar({
                 setAdding(false);
                 setName('');
                 setRoot('');
-              }
+                setError('');
+              } else setError('등록하지 못했습니다. 폴더 경로를 확인하세요.');
             });
           }}
         >
@@ -108,27 +124,60 @@ export function ProjectSidebar({
             aria-current={p.id === projectId ? 'page' : undefined}
             onClick={() => onProject(p.id)}
           >
-            <span>{p.name}</span>
+            <span>
+              {p.name}
+              <small className="project-path">{p.rootPath}</small>
+            </span>
           </button>
         ))}
       </nav>
       {!projects.length && <p className="muted">등록된 프로젝트가 없습니다.</p>}
       <h2>최근 작업</h2>
+      {tasks.length > 0 && (
+        <input
+          aria-label="작업 검색"
+          placeholder="작업 검색"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
       <nav className="recent-tasks" aria-label="최근 작업">
-        {[...tasks].reverse().map((t) => (
-          <button
-            key={t.id}
-            className={`nav-item ${t.id === taskId ? 'selected' : ''}`}
-            onClick={() => onTask(t.id)}
-          >
-            <span>
-              {t.plan?.title ?? t.request.slice(0, 50)}
-              <small>{taskStateLabel(t.state)}</small>
-            </span>
-          </button>
+        {filtered.map((t) => (
+          <div className="task-row" key={t.id}>
+            <button
+              aria-current={t.id === taskId ? 'page' : undefined}
+              className={`nav-item ${t.id === taskId ? 'selected' : ''}`}
+              onClick={() => onTask(t.id)}
+            >
+              <span>
+                {t.plan?.title ?? t.request.slice(0, 50)}
+                <small>
+                  {taskStateLabel(t.state)} · {new Date(t.createdAt).toLocaleDateString('ko-KR')}
+                </small>
+              </span>
+            </button>
+            <button
+              className="text-button delete-task"
+              aria-label={'대화 삭제: ' + (t.plan?.title ?? t.request.slice(0, 50))}
+              disabled={busy || !['completed', 'failed', 'cancelled'].includes(t.state)}
+              title={
+                ['completed', 'failed', 'cancelled'].includes(t.state)
+                  ? '대화 삭제'
+                  : '작업을 중단한 뒤 삭제할 수 있습니다'
+              }
+              onClick={() => setDeleting(t)}
+            >
+              삭제
+            </button>
+          </div>
         ))}
       </nav>
+      {tasks.length > 0 && !filtered.length && <p className="muted">검색 결과가 없습니다.</p>}
+      {deleting && (
+        <DeleteTaskDialog task={deleting} onDelete={onDelete} onClose={() => setDeleting(null)} />
+      )}
       {!tasks.length && <p className="muted">아직 작업이 없습니다.</p>}
+      <SidebarSettings runtime={runtime} onSettings={onSettings} />
       <div className="sidebar-footer">
         <button className="secondary" onClick={onSettings}>
           앱 설정
