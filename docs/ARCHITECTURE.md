@@ -106,3 +106,9 @@ M14 validated a restart-style continuation without mutating the failed M13 datab
 - `src/domain/agent-events.ts` added (agent event union belongs to domain, not infrastructure).
 - `src/domain/errors.ts` and `src/domain/ports.ts` (Clock, IdGenerator) added.
 - `src/server/main.ts` is the entry point; `app.ts` builds the server without listening (testable).
+
+## M18 history and account usage
+
+WorkspaceSelection publishes project, selected task and detail together. Selection epochs and request versions discard late responses, including reselecting the same project. Explicit new-task mode preserves the project task/message history.
+
+Desktop account usage uses bounded stdio initialize → initialized → account/rateLimits/read without thread or turn creation. The provider event tap extracts only known quota windows, separately from orchestration events and SQLite. Imported statusline data is parsed at the IPC boundary; no raw content or credentials persist. Usage IPC validates renderer origin. Memory-only snapshots clear after settings restart; source, capture time, absent data and expired windows remain visible.
