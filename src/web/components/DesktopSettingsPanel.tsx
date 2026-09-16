@@ -1,5 +1,12 @@
-import { PRESETS, presetLimits, presetModels, type Preset } from '../../shared/presets.js';
+import {
+  PRESETS,
+  presetLimits,
+  presetModels,
+  selectedPreset,
+  type Preset,
+} from '../../shared/presets.js';
 import { LimitSettings } from './LimitSettings.js';
+import { AccountUsagePanel } from './AccountUsagePanel.js';
 import { useEffect, useState } from 'react';
 
 import type { ModelCatalog, ModelSpec } from '../../shared/model-catalog.js';
@@ -44,6 +51,7 @@ export function DesktopSettingsPanel() {
 
   const update = (patch: Partial<DesktopSettings>) =>
     setSettings((value) => ({ ...value!, ...patch }));
+  const preset = selectedPreset(settings, catalog);
   const browse = async (provider: 'claude' | 'codex') => {
     const selected = await bridge.chooseExecutable(provider);
     if (selected) {
@@ -57,19 +65,30 @@ export function DesktopSettingsPanel() {
     <section className="desktop-settings">
       <h2>앱 설정{version ? ` · v${version}` : ''}</h2>
       <h3>간편 설정</h3>
-      <div className="preset-options">
+      <div className="preset-options" role="group" aria-label="간편 설정 프리셋">
         {(Object.keys(PRESETS) as Preset[]).map((p) => (
           <button
             className="secondary"
             key={p}
+            aria-pressed={preset === p}
             onClick={() =>
-              update({ ...presetModels(p, catalog), executionLimits: presetLimits(p) })
+              update({
+                ...presetModels(p, catalog),
+                executionLimits: {
+                  ...presetLimits(p),
+                  claudeTokenCeiling: settings.executionLimits.claudeTokenCeiling,
+                  codexTokenCeiling: settings.executionLimits.codexTokenCeiling,
+                },
+              })
             }
           >
             {PRESETS[p]}
           </button>
         ))}
       </div>
+      <p className="preset-selection" role="status">
+        선택: {preset ? PRESETS[preset] : '직접 설정'} · 저장 후 적용
+      </p>
       <p className="hint">
         프리셋은 모델·노력치와 실행 횟수를 제안합니다. 저장해도 AI 호출은 시작하지 않습니다. 토큰
         상한은 고급 설정에서 지정하세요.
@@ -99,7 +118,7 @@ export function DesktopSettingsPanel() {
         aria-expanded={advanced}
         onClick={() => setAdvanced(!advanced)}
       >
-        고급 설정 {advanced ? '접기' : '열기'}
+        모델·노력치 직접 설정 {advanced ? '접기' : '열기'}
       </button>
       {advanced && (
         <div className="advanced-settings">
@@ -176,6 +195,7 @@ export function DesktopSettingsPanel() {
         {saving ? '적용 중…' : '저장하고 다시 시작'}
       </button>
       {message && <p className="hint">{message}</p>}
+      <AccountUsagePanel />
     </section>
   );
 }

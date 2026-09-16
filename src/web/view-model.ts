@@ -11,7 +11,7 @@ export function taskPresentation(task: Task | null): {
   if (!task)
     return {
       stage: '새 작업',
-      next: '원하는 결과를 편하게 적어주세요. Claude가 계획을 정리합니다.',
+      next: '작업 요청을 입력하세요. 승인 전까지 코드를 수정하지 않습니다.',
       action: 'submit',
       button: '계획 만들기',
     };

@@ -1,3 +1,4 @@
+import type { QuotaWindow } from '../shared/account-usage.js';
 import { installedRoleInstruction } from '../infrastructure/harness/project-harness.js';
 import { preflight } from '../infrastructure/preflight.js';
 import type { ModelCatalog } from '../shared/model-catalog.js';
@@ -33,6 +34,7 @@ import type { ExecutableStatus, RuntimeStatusResponse } from '../shared/contract
 import { createApp } from './app.js';
 
 export interface ApplicationServerOptions {
+  onClaudeQuota?: ((windows: QuotaWindow[]) => void) | undefined;
   modelCatalog?: ModelCatalog;
   /** Defaults to loopback only. Use an explicit value to opt into another interface. */
   host?: string;
@@ -91,6 +93,7 @@ function selectClaudeAdapter(
   env: NodeJS.ProcessEnv,
   log: (line: string) => void,
   ids: { next: () => string },
+  onQuota?: (windows: QuotaWindow[]) => void,
 ): {
   adapter: AgentAdapter;
   label: string;
@@ -125,6 +128,7 @@ function selectClaudeAdapter(
       'max',
     ]);
     const adapter = new ClaudeCliAdapter({
+      onQuota,
       executable,
       clock: systemClock,
       timeoutMs,
@@ -247,7 +251,7 @@ export async function startApplicationServer(
     maxReviewRounds: positiveIntEnv(env, 'MAX_REVIEW_ROUNDS', 2) as number,
   };
 
-  const claude = selectClaudeAdapter(env, log, ids);
+  const claude = selectClaudeAdapter(env, log, ids, options.onClaudeQuota);
   const codex = selectCodexAdapter(env, log, ids);
   const reviewDiffMaxBytes = positiveIntEnv(env, 'REVIEW_DIFF_MAX_BYTES', 64 * 1024) as number;
   const reviewContext = new GitReviewContextCollector({ maxBytes: reviewDiffMaxBytes, log });

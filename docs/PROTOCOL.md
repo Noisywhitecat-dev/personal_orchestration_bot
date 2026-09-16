@@ -212,3 +212,14 @@ After a successful `implement` / `revise` run the orchestrator asks a `ReviewCon
 - On restart, queued/review_requested use the existing cancelled transition with INTERRUPTED metadata;
   draft/implementing/reviewing/changes_requested fail INTERRUPTED; approved completes without a provider call.
   Awaiting clarification/approval remain user-gated. Shutdown aborts and drains pipelines before DB close.
+
+## Desktop account usage (M18)
+
+The context-isolated bridge exposes getAccountUsage(refresh: boolean) and importClaudeUsage(text: string).
+New IPC handlers require the current renderer origin. refresh=false reads only memory; refresh=true performs
+a bounded Codex initialize/initialized/account/rateLimits/read exchange, coalesced and throttled for 15 seconds.
+No thread, turn, login or credit-redemption request is sent. The API returns only known windows with kind,
+usedPercent, nullable resetsAt (Unix seconds), observedAt (milliseconds), and source.
+Claude execution events and explicitly imported statusline JSON are projected into the same whitelist.
+Raw input and account credentials are not stored. Import is capped at 64KB. Unsupported/missing values stay absent;
+expired windows do not display current remaining capacity. These snapshots are not task token consumption.

@@ -61,6 +61,17 @@ describe('desktop production lifecycle with a fake Electron window', () => {
       await import('./main.js');
       await vi.waitFor(() => expect(host.urls.some((url) => url.startsWith('http:'))).toBe(true));
       const before = host.urls.at(-1)!;
+      const quotaHandler = host.handlers.get('desktop:get-account-usage')!;
+      expect(() =>
+        quotaHandler({ senderFrame: { url: 'https://untrusted.example' } }, false),
+      ).toThrow();
+      const accountSnapshot = quotaHandler({ senderFrame: { url: before } }, false);
+      expect(accountSnapshot).toMatchObject({ codexStatus: 'not_loaded', codex: [], claude: [] });
+      const imported = host.handlers.get('desktop:import-claude-usage')!(
+        { senderFrame: { url: before } },
+        JSON.stringify({ secret: 'PRIVATE', rate_limits: { seven_day: { used_percentage: 35 } } }),
+      );
+      expect(JSON.stringify(imported)).not.toContain('PRIVATE');
       const oldStatus = (await (await fetch(before + '/api/runtime-status')).json()) as {
         claude: { adapter: string };
       };

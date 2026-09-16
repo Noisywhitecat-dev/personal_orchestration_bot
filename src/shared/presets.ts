@@ -41,3 +41,23 @@ export function presetModels(preset: Preset, catalog: ModelCatalog) {
     codexEffort: codex.effort,
   };
 }
+
+export function selectedPreset(
+  settings: ReturnType<typeof presetModels> & { executionLimits: ExecutionLimitsInput },
+  catalog: ModelCatalog,
+): Preset | null {
+  return (
+    (Object.keys(PRESETS) as Preset[]).find((p) => {
+      const models = presetModels(p, catalog);
+      const limits = presetLimits(p);
+      return (
+        (Object.keys(models) as (keyof typeof models)[]).every(
+          (key) => models[key] === settings[key],
+        ) &&
+        (
+          ['maxClaudeRuns', 'maxCodexRuns', 'maxClarificationRounds', 'maxReviewRounds'] as const
+        ).every((key) => limits[key] === settings.executionLimits[key])
+      );
+    }) ?? null
+  );
+}

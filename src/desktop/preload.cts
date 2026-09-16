@@ -3,6 +3,8 @@
 const { contextBridge, ipcRenderer } = require('electron') as typeof import('electron');
 
 contextBridge.exposeInMainWorld('orchestrationDesktop', {
+  getAccountUsage: (refresh: boolean) => ipcRenderer.invoke('desktop:get-account-usage', refresh),
+  importClaudeUsage: (text: string) => ipcRenderer.invoke('desktop:import-claude-usage', text),
   getSettings: () => ipcRenderer.invoke('desktop:get-settings'),
   getModelCatalog: () => ipcRenderer.invoke('desktop:get-model-catalog'),
   saveSettings: (settings: unknown) => ipcRenderer.invoke('desktop:save-settings', settings),

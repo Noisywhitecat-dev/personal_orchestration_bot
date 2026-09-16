@@ -106,8 +106,8 @@ export function App() {
             프로젝트
           </button>
           <div>
-            <h1>{project?.project.name ?? 'AI 오케스트레이터'}</h1>
-            <span className="muted">Claude와 계획하고, Codex와 만드세요.</span>
+            <h1>{project?.project.name ?? 'AI orchestrator'}</h1>
+            <span className="muted">Claude · 계획/검토 · Codex · 구현</span>
           </div>
           <span className={`mode-badge ${fake ? 'fake' : ''}`}>
             {!runtime ? '연결 중' : fake ? '체험 모드' : '실제 AI 포함'}
@@ -145,23 +145,12 @@ export function App() {
           {tools && projectId && <ProjectTools key={projectId} projectId={projectId} />}
           {!taskId && (
             <section className="welcome">
-              <div className="welcome-symbol">◈</div>
-              <h2>{projectId ? '어떤 것을 만들어 볼까요?' : '첫 프로젝트를 시작해 보세요'}</h2>
+              <h2>{projectId ? '새 작업' : '프로젝트 등록'}</h2>
               <p>
                 {projectId
-                  ? '원하는 결과를 설명하면 Claude가 범위와 계획을 정리합니다. 계획을 승인하면 Codex가 코드를 작성합니다.'
-                  : '프로젝트 목록의 새 프로젝트에서 작업할 폴더를 등록하세요.'}
+                  ? '요청을 입력하면 계획을 작성합니다. 승인 후 구현과 검토를 진행합니다.'
+                  : '왼쪽에서 작업할 프로젝트 폴더를 등록하세요.'}
               </p>
-              <div className="role-cards">
-                <div>
-                  <strong className="claude-text">Claude</strong>
-                  <span>기획 및 검토</span>
-                </div>
-                <div>
-                  <strong className="codex-text">Codex</strong>
-                  <span>코드 작성</span>
-                </div>
-              </div>
               {fake && projectId && (
                 <button
                   className="secondary"
@@ -297,7 +286,7 @@ export function App() {
         >
           닫기
         </button>
-        <DesktopSettingsPanel />
+        {settings && <DesktopSettingsPanel />}
       </dialog>
     </div>
   );

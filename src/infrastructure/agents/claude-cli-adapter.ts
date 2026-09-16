@@ -1,3 +1,4 @@
+import { claudeEventQuota, type QuotaWindow } from '../../shared/account-usage.js';
 import type { AgentEvent } from '../../domain/agent-events.js';
 import { OrchestrationError } from '../../domain/errors.js';
 import type { RunId, SessionId } from '../../domain/ids.js';
@@ -131,6 +132,7 @@ export function buildClaudeResumeArgs(opts: ClaudeArgsOptions & { sessionId: str
 }
 
 export interface ClaudeCliAdapterOptions {
+  onQuota?: ((windows: QuotaWindow[]) => void) | undefined;
   /** Executable name or absolute path. Default `claude`. Tests pass node + a stub script. */
   executable?: string;
   /** Inserted before the claude argv (stub script path in tests). */
@@ -149,6 +151,7 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 export class ClaudeCliAdapter implements AgentAdapter {
   readonly provider = 'claude' as const;
+  private readonly onQuota: ((windows: QuotaWindow[]) => void) | undefined;
   private readonly executable: string;
   private readonly extraArgs: string[];
   private readonly clock: Clock;
@@ -162,6 +165,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
   private readonly controllers = new Map<RunId, AbortController>();
 
   constructor(opts: ClaudeCliAdapterOptions) {
+    this.onQuota = opts.onQuota;
     this.executable = opts.executable ?? 'claude';
     this.extraArgs = opts.extraArgs ?? [];
     this.clock = opts.clock;
@@ -267,6 +271,8 @@ export class ClaudeCliAdapter implements AgentAdapter {
       if (resumeSessionId) yield { ...base(), type: 'session_started', sessionId: resumeSessionId };
 
       for await (const line of proc.stdoutLines()) {
+        const quota = claudeEventQuota(line);
+        if (quota.length) this.onQuota?.(quota);
         for (const event of parser.parseLine(line)) yield event;
       }
       const result = await proc.done;

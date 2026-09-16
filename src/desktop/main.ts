@@ -1,3 +1,5 @@
+import { AccountUsageStore } from './account-usage.js';
+import { readCodexAccountUsage } from './codex-account-usage.js';
 import { join } from 'node:path';
 
 import {
@@ -24,6 +26,7 @@ import {
 
 console.log(`[desktop] starting Electron ${process.versions.electron ?? 'unknown'}`);
 
+const accountUsage = new AccountUsageStore();
 let runtime: RunningApplicationServer | null = null;
 let mainWindow: BrowserWindow | null = null;
 let currentSettings: DesktopSettings;
@@ -55,6 +58,7 @@ async function applySavedSettings(previousSettings: DesktopSettings): Promise<vo
       await mainWindow.loadURL(`data:text/html;charset=utf-8,${applyingPage}`);
     }
     await closeRuntime();
+    accountUsage.clear();
     try {
       runtime = await startEmbeddedServer(currentSettings);
     } catch (error) {
@@ -83,6 +87,22 @@ async function applySavedSettings(previousSettings: DesktopSettings): Promise<vo
 }
 
 function registerIpc(): void {
+  const trusted = (event: Electron.IpcMainInvokeEvent) => {
+    if (!event.senderFrame || new URL(event.senderFrame.url).origin !== allowedOrigin)
+      throw new Error('허용되지 않은 화면입니다.');
+  };
+  ipcMain.handle('desktop:get-account-usage', (event, refresh: unknown) => {
+    trusted(event);
+    return refresh === true
+      ? accountUsage.refresh(() =>
+          readCodexAccountUsage(currentSettings.codexExecutable, app.getPath('userData')),
+        )
+      : accountUsage.snapshot();
+  });
+  ipcMain.handle('desktop:import-claude-usage', (event, text: unknown) => {
+    trusted(event);
+    return accountUsage.importStatus(text);
+  });
   ipcMain.handle('desktop:get-settings', () => currentSettings);
   ipcMain.handle('desktop:get-model-catalog', () => modelCatalog);
   ipcMain.handle('desktop:get-app-info', () => ({
@@ -152,8 +172,8 @@ function installKoreanMenu(): void {
           click: () => {
             void dialog.showMessageBox({
               type: 'info',
-              title: 'AI 오케스트레이터 정보',
-              message: 'AI 오케스트레이터',
+              title: 'AI orchestrator 정보',
+              message: 'AI orchestrator',
               detail: `버전 ${app.getVersion()}\nClaude는 계획과 리뷰를, Codex는 코드 작성을 담당합니다.`,
               buttons: ['확인'],
               noLink: true,
@@ -200,7 +220,7 @@ async function createMainWindow(): Promise<void> {
     minWidth: 520,
     minHeight: 520,
     show: false,
-    title: 'AI 오케스트레이터',
+    title: 'AI orchestrator',
     backgroundColor: '#f7f8fa',
     webPreferences: {
       preload: join(appRoot(), 'dist', 'desktop', 'preload.cjs'),
@@ -232,6 +252,7 @@ function startEmbeddedServer(settings: DesktopSettings): Promise<RunningApplicat
     staticDir: join(appRoot(), 'dist', 'web'),
     env: desktopEnvironment(settings),
     modelCatalog,
+    onClaudeQuota: (windows) => accountUsage.observe(windows),
     log: (line) => console.log(line),
   });
 }
@@ -265,7 +286,7 @@ if (!app.requestSingleInstanceLock()) {
       await createMainWindow();
     } catch (error) {
       dialog.showErrorBox(
-        'AI 오케스트레이터 시작 실패',
+        'AI orchestrator 시작 실패',
         error instanceof Error ? error.message : String(error),
       );
       await closeRuntime();

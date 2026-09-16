@@ -1,6 +1,29 @@
 # STATUS
 
-Last updated: 2026-09-16 (M17 beginner desktop workflow)
+Last updated: 2026-09-16 (M18 history/settings/account usage)
+
+## M18 current checkpoint
+
+- AI orchestrator 명칭으로 통일하고 장식 문구·기호·역할 소개 카드를 제거했다.
+- 동일 프로젝트 재클릭 시 state를 지우고 ID 변경 effect가 실행되지 않던 결함을 수정했다.
+  WorkspaceSelection은 초기 진입/재선택에서 기존 작업을 조회하고 마지막 작업을 복원한다.
+  선택 세대/요청 순서 검증으로 늦은 응답 및 이전 오류를 버린다. 새 작업은 기존 목록을 보존한다.
+- 간편 설정 선택 버튼과 직접 설정 상태를 표시한다. 개별 모델·노력치 선택과 토큰 상한을 유지한다.
+- Codex 공식 app-server 읽기 전용 조회로 주간 사용률/초기화 시각을 표시한다.
+  설치된 실제 CLI로 account/rateLimits/read 성공을 확인했다. AI 작업 생성·생성 호출은 없었다.
+- Claude는 알려진 rate_limit_event 5시간/주간 한도만 자동 반영하고 statusline JSON 가져오기를 지원한다.
+  새 AI 호출 없이 항상 최신 두 한도를 직접 조회하는 공식 명령은 확인하지 못했다. 없는 값은 확인 불가다.
+  실제 Claude 이벤트 수신은 실환경 미검증이며 공식 스키마의 테스트 데이터로 파서/화면을 검증했다.
+- 계정 사용량은 메모리만 사용한다. 사용률/초기화/시각/출처만 허용하고 시각 경과를 표시한다.
+  조회 IPC의 origin 검사, 출력/시간 상한, 중복 조회 억제, 설정 재시작 시 캐시 제거를 검증했다.
+- 31개 파일, 278개 테스트 통과. typecheck/lint/format:check/build/diff 검사 통과.
+- npm run desktop:dist 통과: app-release/AI Orchestrator-0.1.0-x64.exe.
+- 격리된 Fake 개발 화면: 기존 2개 프로젝트/3개 작업을 먼저 저장한 상태에서 시작했다.
+  동일 프로젝트 재클릭, 다른 작업/프로젝트 왕복, 새 작업, 설정 재시작 후 이력 유지,
+  프리셋 선택과 직접 모델/노력치, 사용량 미보고/조회/가져오기 출처, 전체 완료 흐름 확인.
+  560px 화면 가로 넘침 없음, 하단 버튼 유지, 콘솔 오류 없음. 네이티브 IPC는 lifecycle 테스트로 검증.
+- docs/BENCHMARK.md에 회의실 예약 보드 3조건 실험과 평가 기준을 작성했다. 벤치마크는 실행하지 않았다.
+- 새 의존성 및 실제 AI 생성 호출 0. 운영 데이터/전역 설정 변경 없음. 임시 검증 데이터는 정리한다.
 
 ## M17 current checkpoint
 
