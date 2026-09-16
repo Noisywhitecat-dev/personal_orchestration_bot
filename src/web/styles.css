@@ -23,8 +23,8 @@ summary {
 }
 button {
   border: 1px solid transparent;
-  border-radius: 9px;
-  background: #245e53;
+  border-radius: 5px;
+  background: #303640;
   color: white;
   padding: 10px 14px;
   font-size: 13px;
@@ -111,7 +111,7 @@ textarea {
   overflow: hidden;
 }
 .sidebar {
-  background: #edf0f2;
+  background: #f5f5f5;
   border-right: 1px solid #dfe4e8;
   padding: 22px 16px;
   display: flex;
@@ -126,10 +126,6 @@ textarea {
   gap: 9px;
   font-size: 14px;
   margin-bottom: 12px;
-}
-.brand-mark {
-  font-size: 26px;
-  color: #286d5e;
 }
 .new-task {
   width: 100%;
@@ -164,7 +160,6 @@ textarea {
 .nav-item.selected {
   background: #fff;
   color: #215c50;
-  box-shadow: 0 1px 3px #00000008;
 }
 .nav-item small {
   display: block;
@@ -233,40 +228,15 @@ textarea {
 }
 .welcome {
   max-width: 590px;
-  margin: 48px auto;
-  text-align: center;
+  margin: 32px 0;
+  text-align: left;
 }
 .welcome h2 {
-  font-size: 27px;
-  letter-spacing: -1px;
+  font-size: 20px;
   margin-bottom: 14px;
 }
 .welcome p {
   color: #65717c;
-}
-.welcome-symbol {
-  color: #37776a;
-  font-size: 46px;
-  margin-bottom: 18px;
-}
-.role-cards {
-  display: flex;
-  justify-content: center;
-  gap: 18px;
-  margin: 25px 0;
-}
-.role-cards > div {
-  border: 1px solid #e1e5e9;
-  border-radius: 12px;
-  padding: 15px 22px;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.role-cards span {
-  color: #68737b;
-  font-size: 12px;
 }
 .claude-text {
   color: #a1532f;
@@ -278,7 +248,7 @@ textarea {
   max-width: 92%;
   margin-bottom: 22px;
   border: 1px solid #e3e6eb;
-  border-radius: 14px;
+  border-radius: 6px;
   padding: 17px 20px;
   background: white;
   overflow-wrap: anywhere;
@@ -321,7 +291,7 @@ textarea {
 .plan-card {
   padding: 24px;
   border: 1px solid #dccfc5;
-  border-radius: 14px;
+  border-radius: 6px;
   background: #fffdfb;
   margin: 22px 0;
 }
@@ -709,4 +679,29 @@ pre {
     scroll-behavior: auto !important;
     transition: none !important;
   }
+}
+
+.preset-options button[aria-pressed='true'] {
+  background: #303640;
+  border-color: #303640;
+  color: #fff;
+}
+.preset-selection {
+  font-size: 13px;
+  font-weight: 600;
+}
+.account-window {
+  padding: 12px 0;
+  border-bottom: 1px solid #e1e4e8;
+}
+.account-window progress {
+  width: 100%;
+  accent-color: #4c6278;
+}
+.account-window p {
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.account-usage .button-row {
+  flex-wrap: wrap;
 }

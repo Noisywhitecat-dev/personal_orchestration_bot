@@ -35,8 +35,7 @@ export function ProjectSidebar({
   return (
     <aside className="sidebar" aria-label="프로젝트와 최근 작업">
       <div className="brand">
-        <span className="brand-mark">◈</span>
-        <strong>함께 만드는 작업실</strong>
+        <strong>AI orchestrator</strong>
       </div>
       <button className="primary new-task" onClick={onNew} disabled={!projectId}>
         ＋ 새 작업
@@ -67,7 +66,7 @@ export function ProjectSidebar({
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="예: 나의 웹사이트"
+              placeholder="예: 고객 관리"
             />
           </label>
           <label>
@@ -109,11 +108,11 @@ export function ProjectSidebar({
             aria-current={p.id === projectId ? 'page' : undefined}
             onClick={() => onProject(p.id)}
           >
-            ▱ <span>{p.name}</span>
+            <span>{p.name}</span>
           </button>
         ))}
       </nav>
-      {!projects.length && <p className="muted">프로젝트 폴더를 등록하면 시작할 수 있어요.</p>}
+      {!projects.length && <p className="muted">등록된 프로젝트가 없습니다.</p>}
       <h2>최근 작업</h2>
       <nav className="recent-tasks" aria-label="최근 작업">
         {[...tasks].reverse().map((t) => (

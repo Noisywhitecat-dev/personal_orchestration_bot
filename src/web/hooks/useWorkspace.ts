@@ -1,34 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type {
   Project,
-  ProjectDetailResponse,
   RuntimeStatusResponse,
   SseEvent,
-  Task,
-  TaskDetailResponse,
   ExecutionLimitsInput,
 } from '../../shared/contracts.js';
 import { api } from '../api.js';
 import { errorGuidance } from '../view-model.js';
+import { WorkspaceSelection } from '../workspace-selection.js';
 import { useEvents } from './useEvents.js';
 
 export function useWorkspace() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [project, setProject] = useState<ProjectDetailResponse | null>(null);
-  const [detail, setDetail] = useState<TaskDetailResponse | null>(null);
+  const [selection] = useState(() => new WorkspaceSelection(api));
+  const { projectId, taskId, project, detail } = useSyncExternalStore(
+    selection.subscribe,
+    selection.getSnapshot,
+  );
   const [runtime, setRuntime] = useState<RuntimeStatusResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const selected = useRef({ projectId, taskId });
-  selected.current = { projectId, taskId };
   const loading = useRef(0);
-  const requestVersion = useRef(0);
-  const newTask = useCallback(() => {
-    setTaskId(null);
-    setDetail(null);
-  }, []);
+  const newTask = () => {
+    void act(() => selection.newTask());
+  };
 
   const act = useCallback(async (fn: () => Promise<unknown>): Promise<boolean> => {
     loading.current += 1;
@@ -46,64 +41,24 @@ export function useWorkspace() {
     }
   }, []);
 
-  const reload = useCallback(async () => {
-    const selection = { ...selected.current };
-    const version = ++requestVersion.current;
-    const [nextProject, nextDetail] = await Promise.all([
-      selection.projectId ? api.projectDetail(selection.projectId) : null,
-      selection.taskId ? api.taskDetail(selection.taskId) : null,
-    ]);
-    if (
-      version !== requestVersion.current ||
-      selection.projectId !== selected.current.projectId ||
-      selection.taskId !== selected.current.taskId
-    )
-      return;
-    if (nextProject) setProject(nextProject);
-    if (nextDetail)
-      setDetail((current) =>
-        current &&
-        current.task.id === nextDetail.task.id &&
-        current.task.updatedAt > nextDetail.task.updatedAt
-          ? current
-          : nextDetail,
-      );
-  }, []);
-
+  const reload = useCallback(() => selection.refresh(), [selection]);
   useEffect(() => {
+    let active = true;
     void act(async () => {
       const [list, status] = await Promise.all([api.listProjects(), api.runtimeStatus()]);
+      if (!active) return;
       setProjects(list);
       setRuntime(status);
-      if (list[0]) setProjectId(list[0].id);
+      if (list[0]) await selection.openProject(list[0].id);
     });
-  }, [act]);
-  useEffect(() => {
-    void act(reload);
-  }, [projectId, taskId, act, reload]);
-  const onEvent = useCallback((event: SseEvent) => {
-    if (event.type === 'task_updated' && event.task.projectId === selected.current.projectId) {
-      setProject((current) =>
-        current
-          ? {
-              ...current,
-              tasks: [...current.tasks.filter((t) => t.id !== event.task.id), event.task].sort(
-                (a, b) => a.createdAt.localeCompare(b.createdAt),
-              ),
-            }
-          : current,
-      );
-      if (event.task.id === selected.current.taskId)
-        setDetail((current) =>
-          current && current.task.updatedAt <= event.task.updatedAt
-            ? { ...current, task: event.task }
-            : current,
-        );
-    }
-    // Coalesced REST refresh below carries messages, usage, budget and event metadata together.
+    return () => {
+      active = false;
+    };
+  }, [act, selection]);
+  const onEvent = (event: SseEvent) => {
+    if ('projectId' in event && event.projectId !== selection.getSnapshot().projectId) return;
     scheduleRefresh();
-    // scheduleRefresh closes over stable reload; timer cleanup is below.
-  }, []);
+  };
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function scheduleRefresh() {
     if (timer.current) return;
@@ -125,34 +80,29 @@ export function useWorkspace() {
   });
 
   const selectProject = (id: string) => {
-    setProjectId(id);
-    setTaskId(null);
-    setProject(null);
-    setDetail(null);
+    void act(() => selection.openProject(id));
   };
   const selectTask = (id: string) => {
-    setTaskId(id);
-    setDetail(null);
+    void act(() => selection.openTask(id));
   };
   const register = async (name: string, rootPath: string) =>
     act(async () => {
       const created = await api.registerProject({ name, rootPath });
       setProjects(await api.listProjects());
-      selectProject(created.id);
+      await selection.openProject(created.id);
     });
   const submit = async (text: string, limits: ExecutionLimitsInput) => {
     if (!projectId) return false;
     return act(async () => {
       const task = await api.submitRequestWithLimits(projectId, text, limits);
-      selectTask(task.id);
+      if (selection.getSnapshot().projectId === projectId) await selection.openTask(task.id);
     });
   };
   const taskAction = (action: 'approve' | 'reject' | 'cancel' | 'clarify', answer = '') =>
     act(async () => {
       if (!taskId) return;
-      const updated: Task =
-        action === 'clarify' ? await api.clarify(taskId, answer) : await api[action](taskId);
-      setDetail((current) => (current ? { ...current, task: updated } : current));
+      if (action === 'clarify') await api.clarify(taskId, answer);
+      else await api[action](taskId);
       await reload();
     });
   return {

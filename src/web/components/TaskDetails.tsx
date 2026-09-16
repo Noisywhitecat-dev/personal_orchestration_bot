@@ -27,7 +27,7 @@ export function TaskDetails({
   const exportText = () => JSON.stringify(diagnosticSummary(runtime, detail), null, 2);
   return (
     <aside className="task-info" aria-label="작업 정보">
-      <div className="eyebrow">지금 진행 상황</div>
+      <div className="eyebrow">진행 상황</div>
       <h2>{presentation.stage}</h2>
       <p>{presentation.next}</p>
       <h3>이번 작업의 토큰</h3>
