@@ -10,6 +10,7 @@ src/
   application/     Orchestrator + services. Depends on domain and on adapter/repository interfaces only.
   infrastructure/  Concrete adapters (agents), persistence (SQLite), process runner.
   server/          Node HTTP server, routes, SSE event stream. Validates input with Zod.
+  desktop/         Electron main/preload, native dialogs, settings and embedded server lifecycle.
   web/             React + Vite UI. Talks to server via /api and SSE.
   shared/          Contracts shared between server and web (API shapes).
 docs/              Product, architecture, protocol, roadmap, status, next Codex task.
@@ -33,6 +34,15 @@ Dependency direction: `web → shared ← server → application → domain ← 
 | Usage            | Raw `UsageRecord` rows + computed aggregates                            | Keep original events; never fake unknowns as 0                |
 | Execution budget | One application-level guard immediately before every provider run       | Prevent a race or alternate path from bypassing task limits   |
 | Public privacy   | DTO mappers remove session ids; runtime status reports classifications  | UI/SSE/REST never expose private runtime/session values       |
+| Desktop shell    | Electron main process embeds the existing HTTP server on `127.0.0.1`    | Reuses the validated server/UI while giving users one app     |
+
+## Desktop lifecycle
+
+The Electron main process reads a small per-user settings file, starts `startApplicationServer()`
+on an operating-system-selected loopback port, and loads the same built React UI in a sandboxed
+`BrowserWindow`. Node integration is disabled; a context-isolated preload exposes only settings and
+native file/directory pickers. Closing or restarting the app closes the HTTP server and SQLite
+connection. The database and settings live under Electron's per-user `userData` directory.
 
 ## Process safety policy
 

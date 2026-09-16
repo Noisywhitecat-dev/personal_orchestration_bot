@@ -1,5 +1,8 @@
 node_modules/
 dist/
+release/
+desktop-release/
+app-release/
 coverage/
 *.log
 .env

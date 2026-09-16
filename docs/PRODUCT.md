@@ -35,6 +35,8 @@ Claude does **not** edit product code at runtime. An emergency-repair path may b
 
 ## UI (minimal)
 
+- A standalone Windows desktop shell that starts and stops the local server automatically
+- In-app fake/real adapter settings and native project/executable pickers
 - Project registration and selection
 - Chat-style request, Claude clarification, and user answer history
 - Plan approval/rejection with persisted execution limits and maximum remaining calls
@@ -51,4 +53,4 @@ Per provider (claude / codex), per project / task / run / session: input, cached
 
 ## Explicit non-goals (current phase)
 
-Unattended CLI execution (every real run is user-approved), sandbox bypass, auto commit/push, GitHub API, multi-user auth, cloud, Docker, Electron/Tauri, plugin systems, other model providers, agent teams, parallel implementation, worktree automation, voice, mobile, cost conversion, quota lookup, auto-update, telemetry.
+Unattended CLI execution (every real run is user-approved), sandbox bypass, auto commit/push, GitHub API, multi-user auth, cloud, Docker, plugin systems, other model providers, agent teams, parallel implementation, worktree automation, voice, mobile, cost conversion, quota lookup, auto-update, telemetry.

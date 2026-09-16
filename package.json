@@ -2,6 +2,8 @@
   "name": "personal-orchestration-bot",
   "version": "0.1.0",
   "private": true,
+  "main": "dist/desktop/main.js",
+  "author": "Noisywhitecat-dev",
   "description": "Personal AI orchestration program that coordinates Claude Code (planner/reviewer) and Codex (implementer) on a local project.",
   "type": "module",
   "engines": {
@@ -12,6 +14,10 @@
     "dev:server": "tsx watch src/server/main.ts",
     "dev:web": "vite",
     "build": "tsc -p tsconfig.build.json && vite build",
+    "desktop": "npm run build && electron .",
+    "desktop:pack": "npm run build && electron-builder --dir",
+    "desktop:dist": "npm run build && electron-builder --win portable",
+    "desktop:installer": "npm run build && electron-builder --win nsis",
     "start": "node dist/server/main.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -32,6 +38,8 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
     "concurrently": "^9.0.1",
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.12.0",
     "prettier": "^3.3.3",
     "tsx": "^4.19.1",
@@ -39,5 +47,33 @@
     "typescript-eslint": "^8.8.1",
     "vite": "^6.4.3",
     "vitest": "^3.2.7"
+  },
+  "build": {
+    "appId": "dev.noisywhitecat.personal-orchestration-bot",
+    "productName": "AI Orchestrator",
+    "asar": true,
+    "directories": {
+      "output": "app-release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
+  },
+  "allowScripts": {
+    "electron@44.4.1": true
   }
 }
