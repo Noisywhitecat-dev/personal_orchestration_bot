@@ -27,14 +27,14 @@ M0–M10 are complete. The default implementer from here on is **Codex**; Claude
 | M13       | Real Orchestrator + SQLite loop across Claude plan, Codex implement and Claude resume              | Partial — live plan and implement succeeded, but a PowerShell-wrapped test command left `testsPassed=null`; guard blocked review, parser fixed offline, no retry                                                                  |
 | M14       | Resume the M13 Claude plan session through a replay-backed continuation task                       | Done — one real review resume approved the bounded two-file diff and the separate M14 task completed; no plan/Codex call was repeated                                                                                             |
 | M15       | Final local MVP: clarification, execution budgets, runtime status, completed UI, safety acceptance | **Done** — code/browser/offline paths pass. A fresh v3 real three-call flow completed with exact-session review approval, three child exit codes of 0, DB reopen equality, and no persisted/physical command tail or diff marker. |
+| M16       | Standalone Windows desktop app, in-app adapter setup, portable executable                          | **Done** — Electron embeds the loopback server/UI/SQLite lifecycle; portable x64 EXE built and launched successfully.                                                                                                             |
 
 ### Local MVP completion
 
-M0–M15 are complete. Further work requires a newly scoped post-MVP task and, when it involves a real
+M0–M16 are complete. Further work requires a newly scoped post-MVP task and, when it involves a real
 AI CLI, a separate explicit call budget.
 
 ### Optional post-MVP candidates
 
 - Explicitly gated emergency-repair path for Claude.
-- Electron/Tauri packaging.
 - Cloud deployment, multi-user auth, mobile/voice, and additional model providers.

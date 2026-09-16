@@ -5,10 +5,10 @@ const fmt = (n: number | null) => (n === null ? '—' : n.toLocaleString());
 function Tags({ t }: { t: UsageSummary['claude'] }) {
   return (
     <>
-      {t.hasEstimated && <span className="tag estimated">estimated</span>}
-      {t.hasUnavailable && <span className="tag unavailable">unavailable</span>}
+      {t.hasEstimated && <span className="tag estimated">추정</span>}
+      {t.hasUnavailable && <span className="tag unavailable">확인 불가</span>}
       {!t.hasEstimated && !t.hasUnavailable && t.recordCount > 0 && (
-        <span className="tag">actual</span>
+        <span className="tag">실제 측정</span>
       )}
     </>
   );
@@ -22,11 +22,11 @@ export function UsageTable({ title, usage }: { title: string; usage: UsageSummar
         <thead>
           <tr>
             <th></th>
-            <th>in</th>
-            <th>cached</th>
-            <th>out</th>
-            <th>reason</th>
-            <th>total</th>
+            <th>입력</th>
+            <th>캐시</th>
+            <th>출력</th>
+            <th>추론</th>
+            <th>합계</th>
           </tr>
         </thead>
         <tbody>

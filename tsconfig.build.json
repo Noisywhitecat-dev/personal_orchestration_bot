@@ -6,6 +6,13 @@
     "rootDir": "src",
     "jsx": "preserve"
   },
-  "include": ["src/domain", "src/application", "src/infrastructure", "src/server", "src/shared"],
+  "include": [
+    "src/domain",
+    "src/application",
+    "src/infrastructure",
+    "src/server",
+    "src/shared",
+    "src/desktop"
+  ],
   "exclude": ["src/web", "**/*.test.ts"]
 }

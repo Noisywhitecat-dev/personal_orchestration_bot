@@ -15,6 +15,31 @@ The personal local MVP is complete. It includes multi-round clarification, task-
 
 ## Quick start
 
+### Windows desktop app
+
+The desktop edition starts the server, SQLite database, and UI together. No terminal is needed after
+the portable executable has been built or downloaded.
+
+```bash
+npm install
+npm run desktop:dist
+```
+
+Run `app-release/AI Orchestrator-0.1.0-x64.exe`. The first launch uses safe fake adapters. Open **앱
+설정** inside the left sidebar to select real Claude Code / Codex executables; saving restarts the
+app automatically. Use **폴더 선택** to register a project without typing its path. Desktop data is
+kept in the operating system's per-user application-data directory, not beside the executable.
+
+For a developer launch without packaging:
+
+```bash
+npm run desktop
+```
+
+See [docs/DESKTOP.md](docs/DESKTOP.md) for the non-technical setup guide.
+
+### Browser development mode
+
 ```bash
 npm install
 npm test          # unit + integration tests (no real CLI needed)
@@ -72,4 +97,4 @@ After every Codex implement/revise run the server collects a **read-only, bounde
 
 ## Optional post-MVP candidates
 
-Multi-user auth, cloud deployment, Electron/Tauri packaging, plugin marketplaces, additional model providers, automatic git commit/push, and a separately gated Claude emergency-repair path.
+Multi-user auth, cloud deployment, plugin marketplaces, additional model providers, automatic git commit/push, and a separately gated Claude emergency-repair path.

@@ -11,16 +11,16 @@ describe('web view model', () => {
       reliableRemainingTokens: null,
       tokenConfidence: 'estimated',
     } as ProviderBudgetStatus;
-    expect(tokenRangeLabel(status)).toContain('20 known / 100 ceiling (estimated)');
-    expect(tokenRangeLabel(status)).not.toContain('remain');
+    expect(tokenRangeLabel(status)).toContain('확인된 토큰 20 / 상한 100 (추정)');
+    expect(tokenRangeLabel(status)).not.toContain('남음');
   });
 
   it('shows a recovery action for budget and clarification failures', () => {
     expect(
       nextAction({ failure: { code: 'CLAUDE_RUN_LIMIT_EXCEEDED', message: 'x' } } as Task),
-    ).toContain('higher execution limit');
+    ).toContain('실행 한도를 높여');
     expect(
       nextAction({ failure: { code: 'CLARIFICATION_ROUNDS_EXCEEDED', message: 'x' } } as Task),
-    ).toContain('missing details');
+    ).toContain('누락된 내용');
   });
 });

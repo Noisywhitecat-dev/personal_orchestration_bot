@@ -19,7 +19,8 @@ button:disabled {
   opacity: 0.5;
 }
 textarea,
-input {
+input,
+select {
   font: inherit;
   width: 100%;
   padding: 6px;
@@ -242,6 +243,35 @@ input {
 .runtime-status {
   margin-bottom: 6px;
   color: #555;
+}
+.desktop-settings {
+  margin-top: 18px;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+}
+.desktop-settings summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.adapter-setting {
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+.adapter-setting label {
+  display: block;
+  margin-top: 6px;
+  color: #555;
+  font-size: 11px;
+}
+.path-picker {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+.path-picker button {
+  flex: 0 0 auto;
 }
 @media (max-width: 900px) {
   .layout {

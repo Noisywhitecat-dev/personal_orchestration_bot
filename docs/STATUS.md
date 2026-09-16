@@ -1,6 +1,22 @@
 # STATUS
 
-Last updated: 2026-09-16 (M15 final local MVP implementation and bounded acceptance)
+Last updated: 2026-09-16 (M16 standalone Windows desktop app)
+
+## M16 desktop application
+
+The local MVP now runs as a standalone Windows desktop application. Electron 44.4.1 embeds a Node
+24 runtime, starts the existing server on a free `127.0.0.1` port, stores SQLite and settings in the
+per-user application-data directory, and closes the server with the app. The sandboxed renderer has
+no Node integration; a context-isolated preload provides only settings save/read and native
+project/executable pickers. Fake adapters remain the first-launch default, while the left-sidebar
+settings panel enables real Claude/Codex executables and restarts the app after saving.
+The renderer's navigation, controls, task/run states, usage labels and timeline labels, together with
+the native Electron application menu, are displayed in Korean. Internal protocol identifiers remain
+unchanged for persistence and API compatibility.
+
+`npm run desktop` was launched successfully in development. `npm run desktop:dist` produced and
+successfully launched `AI Orchestrator-0.1.0-x64.exe`; its window was responsive and its internal
+server listened only on loopback. Generated desktop release directories are git-ignored.
 
 ## M15 authoritative status
 
