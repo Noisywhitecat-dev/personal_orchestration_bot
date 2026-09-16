@@ -14,13 +14,39 @@ export function DeleteTaskDialog({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    dialog.current?.showModal();
+    const element = dialog.current;
+    const trigger = document.activeElement;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (trigger instanceof HTMLElement && trigger.isConnected)
+        trigger.focus({ preventScroll: true });
+      else document.querySelector<HTMLButtonElement>('.new-task')?.focus({ preventScroll: true });
+    };
   }, []);
   return (
     <dialog
       ref={dialog}
       className="delete-dialog"
       aria-labelledby="delete-title"
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return;
+        const buttons = [
+          ...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+        ];
+        if (!buttons.length) {
+          event.preventDefault();
+          return;
+        }
+        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.shiftKey
+          ? index <= 0
+            ? buttons.length - 1
+            : index - 1
+          : (index + 1) % buttons.length;
+        event.preventDefault();
+        buttons[next]?.focus();
+      }}
       onCancel={(e) => {
         if (busy) e.preventDefault();
         else onClose();

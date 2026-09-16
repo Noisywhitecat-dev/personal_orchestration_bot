@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, resolve } from 'node:path';
 
 import type { Orchestrator } from '../application/orchestrator.js';
 import { OrchestrationError } from '../domain/errors.js';
@@ -31,7 +31,8 @@ const MIME: Record<string, string> = {
 
 /** Builds the HTTP server without listening, so tests can drive it. */
 export function createApp(opts: AppOptions): Server {
-  const { orchestrator, staticDir } = opts;
+  const { orchestrator } = opts;
+  const staticDir = opts.staticDir ? resolve(opts.staticDir) : undefined;
   const runtimeStatus =
     opts.runtimeStatus ??
     ({

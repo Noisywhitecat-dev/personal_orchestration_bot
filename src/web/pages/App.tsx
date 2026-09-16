@@ -36,7 +36,7 @@ export function App() {
   const nearBottom = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
   const previousTask = useRef<string | null>(null);
-  const messagesEnd = useRef<HTMLDivElement>(null);
+  const conversationScroll = useRef<HTMLDivElement>(null);
   const task = detail?.task ?? null;
   const presentation = taskPresentation(task);
   const fake = runtime?.claude.adapter === 'fake' && runtime.codex.adapter === 'fake';
@@ -58,7 +58,8 @@ export function App() {
   }, [settings]);
   useEffect(() => {
     if (nearBottom.current || previousTask.current !== taskId) {
-      messagesEnd.current?.scrollIntoView({ block: 'nearest' });
+      const scroller = conversationScroll.current;
+      scroller?.scrollTo({ top: scroller.scrollHeight });
       nearBottom.current = true;
       setShowLatest(false);
     } else setShowLatest(true);
@@ -67,7 +68,7 @@ export function App() {
   const newTask = () => {
     workspace.newTask();
     setSidebar(false);
-    setTimeout(() => composer.current?.focus(), 0);
+    setTimeout(() => composer.current?.focus({ preventScroll: true }), 0);
   };
   const primaryAction = async () => {
     if (
@@ -167,6 +168,7 @@ export function App() {
           </div>
         )}
         <div
+          ref={conversationScroll}
           className="conversation-scroll"
           onScroll={(event) => {
             const el = event.currentTarget;
@@ -255,14 +257,14 @@ export function App() {
               )}
             </div>
           )}
-          <div ref={messagesEnd} />
         </div>
         <footer className="composer-area">
           {showLatest && (
             <button
               className="secondary"
               onClick={() => {
-                messagesEnd.current?.scrollIntoView({ block: 'nearest' });
+                const scroller = conversationScroll.current;
+                scroller?.scrollTo({ top: scroller.scrollHeight });
                 nearBottom.current = true;
                 setShowLatest(false);
               }}
