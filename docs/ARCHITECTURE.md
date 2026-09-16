@@ -112,3 +112,12 @@ M14 validated a restart-style continuation without mutating the failed M13 datab
 WorkspaceSelection publishes project, selected task and detail together. Selection epochs and request versions discard late responses, including reselecting the same project. Explicit new-task mode preserves the project task/message history.
 
 Desktop account usage uses bounded stdio initialize → initialized → account/rateLimits/read without thread or turn creation. The provider event tap extracts only known quota windows, separately from orchestration events and SQLite. Imported statusline data is parsed at the IPC boundary; no raw content or credentials persist. Usage IPC validates renderer origin. Memory-only snapshots clear after settings restart; source, capture time, absent data and expired windows remain visible.
+
+## M19 이력 관리와 화면 상태
+
+`Repositories.deleteTaskHistory`는 여러 저장소에 걸친 원자적 삭제 포트다. SQLite는 자식 기록부터 삭제하고 실패 시 롤백한다.
+도메인 상태 머신은 유지하며 Orchestrator에서 terminal 상태와 실행 파이프라인 부재를 함께 확인한다.
+삭제 이벤트는 작업/프로젝트 ID만 공개한다. `WorkspaceSelection`은 삭제된 선택을 복구한다.
+사이드바 사용량은 기존 제한된 desktop bridge를 사용한다. 초안은 프로젝트/작업별 React 메모리에만 보관하며
+앱 종료 시 사라진다. 설정 패널은 최초 개방 후 유지하여 닫기/열기에 미저장 편집이 소실되지 않는다.
+시작 안내 완료는 origin 검사된 별도 IPC로 onboardingCompleted만 저장하고 서버를 재시작하지 않는다.

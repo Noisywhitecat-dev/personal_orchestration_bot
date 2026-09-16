@@ -1,6 +1,19 @@
 # STATUS
 
-Last updated: 2026-09-16 (M18 history/settings/account usage)
+Last updated: 2026-09-16 (M19 history deletion/sidebar UX)
+
+## M19 current checkpoint
+
+- 종료된 대화의 확인 후 원자적 삭제, 관련 기록/로컬 usage 제거, 다른 작업 보존과 SSE 선택 복구 구현.
+- 사이드바 계정 사용량과 모델·노력치, 작업 검색/날짜/프로젝트 경로 표시.
+- 프로젝트별 초안 및 설정 편집 유지, 중복/IME 전송 보호, 글자 수 표시, 읽는 위치 보존.
+- 안내 완료는 서버 재시작 없이 저장하며 첫 단계 닫기 지원. 저장 상태와 계획 라벨 수정.
+- 33개 파일 291개 테스트, typecheck/lint/format:check/build, diff 검사 통과. 새 의존성 없음.
+- desktop:dist 패키징 결과는 app-release/AI Orchestrator-0.1.0-x64.exe.
+- 실제 AI 생성 호출 0회. 운영 DB, 외부 프로젝트, 전역 설정 변경 없음.
+- **화면 검증 미완료**: 브라우저의 로컬 URL 차단으로 이번 변경의 실제 클릭/스크롤/반응형은 미검증.
+  SSR, Fake HTTP/SQLite와 Electron lifecycle 자동 검증은 통과했다. 이전 M18 화면 검증과 구분한다.
+- 상세 발견 사항과 후속 화면 시나리오: [사용성 점검](UX_AUDIT.md). 이 제약을 명시한 draft PR로 제공한다.
 
 ## M18 current checkpoint
 

@@ -6,7 +6,6 @@ import {
   type Preset,
 } from '../../shared/presets.js';
 import { LimitSettings } from './LimitSettings.js';
-import { AccountUsagePanel } from './AccountUsagePanel.js';
 import { useEffect, useState } from 'react';
 
 import type { ModelCatalog, ModelSpec } from '../../shared/model-catalog.js';
@@ -19,6 +18,7 @@ import {
 } from '../desktop-bridge.js';
 
 export function DesktopSettingsPanel() {
+  const [saved, setSaved] = useState('');
   const [advanced, setAdvanced] = useState(false);
   const bridge = desktopBridge;
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
@@ -32,6 +32,7 @@ export function DesktopSettingsPanel() {
     void Promise.all([bridge.getSettings(), bridge.getAppInfo(), bridge.getModelCatalog()])
       .then(([loaded, info, models]) => {
         setSettings(loaded);
+        setSaved(JSON.stringify(loaded));
         setVersion(info.version);
         setCatalog(models);
       })
@@ -51,6 +52,7 @@ export function DesktopSettingsPanel() {
 
   const update = (patch: Partial<DesktopSettings>) =>
     setSettings((value) => ({ ...value!, ...patch }));
+  const dirty = JSON.stringify(settings) !== saved;
   const preset = selectedPreset(settings, catalog);
   const browse = async (provider: 'claude' | 'codex') => {
     const selected = await bridge.chooseExecutable(provider);
@@ -64,6 +66,10 @@ export function DesktopSettingsPanel() {
   return (
     <section className="desktop-settings">
       <h2>앱 설정{version ? ` · v${version}` : ''}</h2>
+      <p className="hint">
+        닫아도 편집 내용은 유지됩니다. 저장해야 적용되며 앱을 다시 시작하면 미저장 변경은
+        사라집니다.
+      </p>
       <h3>간편 설정</h3>
       <div className="preset-options" role="group" aria-label="간편 설정 프리셋">
         {(Object.keys(PRESETS) as Preset[]).map((p) => (
@@ -87,7 +93,8 @@ export function DesktopSettingsPanel() {
         ))}
       </div>
       <p className="preset-selection" role="status">
-        선택: {preset ? PRESETS[preset] : '직접 설정'} · 저장 후 적용
+        선택: {preset ? PRESETS[preset] : '직접 설정'} ·{' '}
+        {dirty ? '저장하지 않은 변경' : '저장된 설정'}
       </p>
       <p className="hint">
         프리셋은 모델·노력치와 실행 횟수를 제안합니다. 저장해도 AI 호출은 시작하지 않습니다. 토큰
@@ -182,7 +189,7 @@ export function DesktopSettingsPanel() {
         않습니다.
       </p>
       <button
-        disabled={saving}
+        disabled={saving || !dirty}
         onClick={() => {
           setSaving(true);
           setMessage('설정을 저장하고 적용하는 중입니다…');
@@ -195,7 +202,6 @@ export function DesktopSettingsPanel() {
         {saving ? '적용 중…' : '저장하고 다시 시작'}
       </button>
       {message && <p className="hint">{message}</p>}
-      <AccountUsagePanel />
     </section>
   );
 }

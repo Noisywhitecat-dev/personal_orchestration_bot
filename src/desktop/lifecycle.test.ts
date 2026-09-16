@@ -61,6 +61,16 @@ describe('desktop production lifecycle with a fake Electron window', () => {
       await import('./main.js');
       await vi.waitFor(() => expect(host.urls.some((url) => url.startsWith('http:'))).toBe(true));
       const before = host.urls.at(-1)!;
+      const completeOnboarding = host.handlers.get('desktop:complete-onboarding')!;
+      expect(() =>
+        completeOnboarding({ senderFrame: { url: 'https://untrusted.example' } }),
+      ).toThrow();
+      completeOnboarding({ senderFrame: { url: before } });
+      expect(host.handlers.get('desktop:get-settings')!()).toMatchObject({
+        onboardingCompleted: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(host.urls.filter((url) => url.startsWith('http:'))).toHaveLength(1);
       const quotaHandler = host.handlers.get('desktop:get-account-usage')!;
       expect(() =>
         quotaHandler({ senderFrame: { url: 'https://untrusted.example' } }, false),

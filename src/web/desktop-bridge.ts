@@ -9,6 +9,7 @@ export type { DesktopSettings } from '../desktop/settings.js';
 import type { DesktopSettings } from '../desktop/settings.js';
 
 export interface DesktopBridge {
+  completeOnboarding: () => Promise<void>;
   getAccountUsage: (refresh: boolean) => Promise<AccountUsage>;
   importClaudeUsage: (text: string) => Promise<AccountUsage>;
   getSettings: () => Promise<DesktopSettings>;

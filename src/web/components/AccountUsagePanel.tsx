@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { emptyAccountUsage, type QuotaKind, type QuotaWindow } from '../../shared/account-usage.js';
 import { desktopBridge } from '../desktop-bridge.js';
 
-export function AccountUsagePanel() {
+export function AccountUsagePanel({ compact = false }: { compact?: boolean }) {
   const [usage, setUsage] = useState(emptyAccountUsage);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -40,12 +40,14 @@ export function AccountUsagePanel() {
     }
   };
   return (
-    <section className="account-usage" aria-label="계정 사용량">
+    <section className={`account-usage ${compact ? 'compact' : ''}`} aria-label="계정 사용량">
       <h3>계정 사용량</h3>
-      <p className="hint">
-        계정 전체 한도입니다. 이 앱의 작업별 토큰과 별개이며, 확인 시각 이후 사용량은 반영되지 않을
-        수 있습니다.
-      </p>
+      {!compact && (
+        <p className="hint">
+          계정 전체 한도입니다. 이 앱의 작업별 토큰과 별개이며, 확인 시각 이후 사용량은 반영되지
+          않을 수 있습니다.
+        </p>
+      )}
       <Quota label="Codex 주간" kind="seven_day" windows={usage.codex} now={now} />
       <Quota label="Claude 5시간" kind="five_hour" windows={usage.claude} now={now} />
       <Quota label="Claude 주간" kind="seven_day" windows={usage.claude} now={now} />
@@ -67,32 +69,35 @@ export function AccountUsagePanel() {
           Claude 사용량 페이지
         </a>
       </div>
-      <p className="hint">
-        조회는 AI 작업을 실행하지 않습니다. Claude는 실행 중 보고된 한도만 자동 반영합니다. 미보고
-        값은 공식 사용량 페이지에서 확인하세요.
-      </p>
-      <details>
-        <summary>Claude 상태 표시줄 데이터 가져오기</summary>
+      <details className="usage-help">
+        <summary>조회 방법과 데이터 출처</summary>
         <p className="hint">
-          공식 statusline의 rate_limits가 포함된 JSON을 선택하세요. 사용률과 초기화 시각만 메모리에
-          보관합니다. 가져온 값은 실시간 조회 결과가 아닙니다.
+          조회는 AI 작업을 실행하지 않습니다. Claude는 실행 중 보고된 한도만 자동 반영합니다. 미보고
+          값은 공식 사용량 페이지에서 확인하세요.
         </p>
-        <input
-          aria-label="Claude 사용량 JSON"
-          type="file"
-          accept="application/json,.json"
-          disabled={busy || !desktopBridge}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = '';
-            if (!file) return;
-            if (file.size > 65536) {
-              setError('64KB 이하의 JSON 파일을 선택하세요.');
-              return;
-            }
-            void act(async () => desktopBridge!.importClaudeUsage(await file.text()));
-          }}
-        />
+        <details>
+          <summary>Claude 상태 표시줄 데이터 가져오기</summary>
+          <p className="hint">
+            공식 statusline의 rate_limits가 포함된 JSON을 선택하세요. 사용률과 초기화 시각만
+            메모리에 보관합니다. 가져온 값은 실시간 조회 결과가 아닙니다.
+          </p>
+          <input
+            aria-label="Claude 사용량 JSON"
+            type="file"
+            accept="application/json,.json"
+            disabled={busy || !desktopBridge}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              if (!file) return;
+              if (file.size > 65536) {
+                setError('64KB 이하의 JSON 파일을 선택하세요.');
+                return;
+              }
+              void act(async () => desktopBridge!.importClaudeUsage(await file.text()));
+            }}
+          />
+        </details>
       </details>
       {error && <p role="alert">{error}</p>}
     </section>
