@@ -15,8 +15,12 @@ import type { AgentAdapter } from '../infrastructure/agents/agent-adapter.js';
 import {
   CLAUDE_PERMISSION_MODE,
   ClaudeCliAdapter,
+  type ClaudeEffort,
 } from '../infrastructure/agents/claude-cli-adapter.js';
-import { CodexCliAdapter } from '../infrastructure/agents/codex-cli-adapter.js';
+import {
+  CodexCliAdapter,
+  type CodexReasoningEffort,
+} from '../infrastructure/agents/codex-cli-adapter.js';
 import { FakeClaudeAdapter } from '../infrastructure/agents/fake-claude-adapter.js';
 import { FakeCodexAdapter } from '../infrastructure/agents/fake-codex-adapter.js';
 import { GitReviewContextCollector } from '../infrastructure/git/git-review-context-collector.js';
@@ -60,6 +64,19 @@ function nullablePositiveIntEnv(env: NodeJS.ProcessEnv, name: string): number | 
   return positiveIntEnv(env, name, undefined) ?? null;
 }
 
+function optionalEnumEnv<T extends string>(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  allowed: readonly T[],
+): T | undefined {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return undefined;
+  if (!allowed.includes(raw as T)) {
+    throw new Error(`Invalid ${name}: "${raw}" (expected ${allowed.join(', ')})`);
+  }
+  return raw as T;
+}
+
 function executableStatus(mode: 'fake' | 'cli', executable: string): ExecutableStatus {
   if (mode === 'fake') return 'not_required';
   if (!isAbsolute(executable)) return 'configured';
@@ -76,6 +93,8 @@ function selectClaudeAdapter(
   mode: 'fake' | 'cli';
   timeoutMs: number;
   executable: ExecutableStatus;
+  model: string | null;
+  effort: ClaudeEffort | null;
 } {
   const mode = env['CLAUDE_ADAPTER'] ?? 'fake';
   if (mode === 'fake') {
@@ -85,17 +104,29 @@ function selectClaudeAdapter(
       mode,
       timeoutMs: 600_000,
       executable: 'not_required',
+      model: null,
+      effort: null,
     };
   }
   if (mode === 'cli') {
     const executable = env['CLAUDE_EXECUTABLE'] ?? 'claude';
     const timeoutMs = positiveIntEnv(env, 'CLAUDE_TIMEOUT_MS', 10 * 60 * 1000) as number;
     const maxTurns = positiveIntEnv(env, 'CLAUDE_MAX_TURNS', undefined);
+    const model = env['CLAUDE_MODEL'] || undefined;
+    const effort = optionalEnumEnv<ClaudeEffort>(env, 'CLAUDE_EFFORT', [
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
     const adapter = new ClaudeCliAdapter({
       executable,
       clock: systemClock,
       timeoutMs,
       ...(maxTurns !== undefined ? { maxTurns } : {}),
+      ...(model !== undefined ? { model } : {}),
+      ...(effort !== undefined ? { effort } : {}),
       log,
     });
     const turns = maxTurns !== undefined ? `, max-turns=${maxTurns}` : '';
@@ -106,6 +137,8 @@ function selectClaudeAdapter(
       mode,
       timeoutMs,
       executable: executableStatus(mode, executable),
+      model: model ?? null,
+      effort: effort ?? null,
     };
   }
   throw new Error(`Invalid CLAUDE_ADAPTER="${mode}". Expected "fake" or "cli".`);
@@ -121,6 +154,8 @@ function selectCodexAdapter(
   mode: 'fake' | 'cli';
   timeoutMs: number;
   executable: ExecutableStatus;
+  model: string | null;
+  effort: CodexReasoningEffort | null;
 } {
   const mode = env['CODEX_ADAPTER'] ?? 'fake';
   if (mode === 'fake') {
@@ -130,12 +165,24 @@ function selectCodexAdapter(
       mode,
       timeoutMs: 900_000,
       executable: 'not_required',
+      model: null,
+      effort: null,
     };
   }
   if (mode === 'cli') {
     const executable = env['CODEX_EXECUTABLE'] ?? 'codex';
     const timeoutMs = Number(env['CODEX_TIMEOUT_MS'] ?? 15 * 60 * 1000);
     const skipGitRepoCheck = env['CODEX_SKIP_GIT_REPO_CHECK'] === '1';
+    const model = env['CODEX_MODEL'] || undefined;
+    const effort = optionalEnumEnv<CodexReasoningEffort>(env, 'CODEX_REASONING_EFFORT', [
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+      'ultra',
+    ]);
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
       throw new Error(`Invalid CODEX_TIMEOUT_MS: ${env['CODEX_TIMEOUT_MS']}`);
     }
@@ -144,6 +191,8 @@ function selectCodexAdapter(
       clock: systemClock,
       timeoutMs,
       skipGitRepoCheck,
+      ...(model !== undefined ? { model } : {}),
+      ...(effort !== undefined ? { reasoningEffort: effort } : {}),
       log,
     });
     const executableLabel = isAbsolute(executable) ? basename(executable) : 'PATH lookup';
@@ -153,6 +202,8 @@ function selectCodexAdapter(
       mode,
       timeoutMs,
       executable: executableStatus(mode, executable),
+      model: model ?? null,
+      effort: effort ?? null,
     };
   }
   throw new Error(`Invalid CODEX_ADAPTER="${mode}". Expected "fake" or "cli".`);
@@ -219,8 +270,16 @@ export async function startApplicationServer(
       adapter: claude.mode,
       executable: claude.executable,
       timeoutMs: claude.timeoutMs,
+      model: claude.model,
+      effort: claude.effort,
     },
-    codex: { adapter: codex.mode, executable: codex.executable, timeoutMs: codex.timeoutMs },
+    codex: {
+      adapter: codex.mode,
+      executable: codex.executable,
+      timeoutMs: codex.timeoutMs,
+      model: codex.model,
+      effort: codex.effort,
+    },
     reviewDiffMaxBytes,
     database: basename(databasePath),
     defaultExecutionLimits,

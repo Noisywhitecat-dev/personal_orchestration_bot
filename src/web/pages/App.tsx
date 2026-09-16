@@ -548,9 +548,12 @@ export function App() {
         {runtime && (
           <div className="runtime-status">
             Claude {valueLabel(runtime.claude.adapter)}/{valueLabel(runtime.claude.executable)},{' '}
-            {runtime.claude.timeoutMs}밀리초 · Codex {valueLabel(runtime.codex.adapter)}/
-            {valueLabel(runtime.codex.executable)}, {runtime.codex.timeoutMs}밀리초 · 리뷰 변경 내용{' '}
-            {runtime.reviewDiffMaxBytes}바이트 · DB {runtime.database}
+            모델 {runtime.claude.model ?? 'CLI 기본값'}, 노력치{' '}
+            {runtime.claude.effort ?? 'CLI 기본값'}, {runtime.claude.timeoutMs}밀리초 · Codex{' '}
+            {valueLabel(runtime.codex.adapter)}/{valueLabel(runtime.codex.executable)}, 모델{' '}
+            {runtime.codex.model ?? 'CLI 기본값'}, 노력치 {runtime.codex.effort ?? 'CLI 기본값'},{' '}
+            {runtime.codex.timeoutMs}밀리초 · 리뷰 변경 내용 {runtime.reviewDiffMaxBytes}바이트 · DB{' '}
+            {runtime.database}
           </div>
         )}
         {systemLog.map((l, i) => (

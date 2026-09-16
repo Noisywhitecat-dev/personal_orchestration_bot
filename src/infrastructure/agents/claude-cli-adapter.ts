@@ -25,6 +25,7 @@ import { ClaudeJsonlParser, jsonSchemaFor } from './claude-jsonl-parser.js';
  */
 
 export const CLAUDE_PERMISSION_MODE = 'plan';
+export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** Never allowed in argv. */
 export const FORBIDDEN_CLAUDE_ARGS: readonly string[] = [
@@ -82,6 +83,7 @@ export interface ClaudeArgsOptions {
   /** Passed as `--max-turns` only when set (not advertised by 2.1.260 help). */
   maxTurns?: number;
   model?: string;
+  effort?: ClaudeEffort;
 }
 
 function commonArgs(opts: ClaudeArgsOptions): string[] {
@@ -109,6 +111,7 @@ function commonArgs(opts: ClaudeArgsOptions): string[] {
     }
     args.push('--model', opts.model);
   }
+  if (opts.effort !== undefined) args.push('--effort', opts.effort);
   return args;
 }
 
@@ -136,6 +139,7 @@ export interface ClaudeCliAdapterOptions {
   timeoutMs?: number;
   maxTurns?: number;
   model?: string;
+  effort?: ClaudeEffort;
   env?: Record<string, string>;
   log?: (line: string) => void;
   killGraceMs?: number;
@@ -151,6 +155,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
   private readonly timeoutMs: number;
   private readonly maxTurns: number | undefined;
   private readonly model: string | undefined;
+  private readonly effort: ClaudeEffort | undefined;
   private readonly env: Record<string, string> | undefined;
   private readonly log: ((line: string) => void) | undefined;
   private readonly killGraceMs: number | undefined;
@@ -163,6 +168,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.maxTurns = opts.maxTurns;
     this.model = opts.model;
+    this.effort = opts.effort;
     this.env = opts.env;
     this.log = opts.log;
     this.killGraceMs = opts.killGraceMs;
@@ -211,6 +217,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
         kind: input.kind,
         ...(this.maxTurns !== undefined ? { maxTurns: this.maxTurns } : {}),
         ...(this.model !== undefined ? { model: this.model } : {}),
+        ...(this.effort !== undefined ? { effort: this.effort } : {}),
       };
       args = resumeSessionId
         ? buildClaudeResumeArgs({ ...opts, sessionId: resumeSessionId })

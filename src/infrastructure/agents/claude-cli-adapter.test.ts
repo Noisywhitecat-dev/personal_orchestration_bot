@@ -38,10 +38,16 @@ describe('buildClaudeStartArgs', () => {
   });
 
   it('review kind uses the review schema; max-turns and model are appended when set', () => {
-    const args = buildClaudeStartArgs({ kind: 'review', maxTurns: 6, model: 'sonnet' });
+    const args = buildClaudeStartArgs({
+      kind: 'review',
+      maxTurns: 6,
+      model: 'sonnet',
+      effort: 'high',
+    });
     expect(flagValue(args, '--json-schema')).toBe(JSON.stringify(REVIEW_JSON_SCHEMA));
     expect(flagValue(args, '--max-turns')).toBe('6');
     expect(flagValue(args, '--model')).toBe('sonnet');
+    expect(flagValue(args, '--effort')).toBe('high');
   });
 
   it('rejects non-positive or non-integer maxTurns and odd model names', () => {
